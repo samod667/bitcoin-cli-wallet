@@ -6,7 +6,6 @@ A simple Python command-line tool to generate testnet Bitcoin addresses. It can:
 - Derive 10 additional testnet addresses from the base private key.
 - Display results in a formatted table, including private keys, public keys, addresses, and mnemonic words (if applicable).
 
-This project was built as a learning challenge to explore Bitcoin key generation, mnemonic seeds, and basic derivation in Python.
 
 ## Features
 - Generates a 24-word BIP-39 mnemonic for random keys (256-bit entropy).
