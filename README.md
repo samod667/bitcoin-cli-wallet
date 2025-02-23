@@ -90,14 +90,14 @@ Contributing
 
 Contributions are welcome! Feel free to fork the repository, suggest modifications, or submit pull requests. All feedback is appreciated, especially from beginners looking to learn and improve.
 
-License
+# License
 
 This project is licensed under the MIT License. You are free to use, modify, and distribute it as per the license terms.
 
-Tags
+# Tags
 
 #BitcoinDev #Python #CLI #Cryptocurrency #LearningProject
 
-Acknowledgments
+# Acknowledgments
 
 Built with python-bitcoinlib and mnemonic.
