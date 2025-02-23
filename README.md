@@ -1,60 +1,51 @@
-# Bitcoin Address Generation CLI
+Bitcoin Address Generation CLI
 
-A simple Python command-line tool to generate testnet Bitcoin addresses. It can:
-- Generate a random base private key with a 24-word BIP-39 mnemonic when no input is provided.
-- Accept a user-provided testnet private key in Wallet Import Format (WIF).
-- Derive 10 additional testnet addresses from the base private key.
-- Display results in a formatted table, including private keys, public keys, addresses, and mnemonic words (if applicable).
+A simple Python command-line tool for generating testnet Bitcoin addresses.
 
-This project was built as a learning challenge to explore Bitcoin key generation, mnemonic seeds, and basic derivation in Python.
+This tool enables you to:
 
-## Features
-- Generates a 24-word BIP-39 mnemonic for random keys (256-bit entropy).
-- Outputs private keys (WIF), public keys (hex), and testnet addresses in a clean CLI table.
-- Derives 10 child keys by incrementing the base private key (simplified, not full BIP-32).
-- Includes error handling for invalid WIF formats, mainnet keys, and derivation issues.
+Generate a Random Key: Create a random base private key with a 24-word BIP-39 mnemonic when no input is provided.
+Input a Specific Key: Accept a user-supplied testnet private key in Wallet Import Format (WIF).
+Derive Additional Addresses: Generate 10 child addresses from the base private key.
+Display Results Clearly: Present private keys, public keys, addresses, and mnemonic words (when applicable) in a formatted table.
+Features
 
-## Prerequisites
-- Python 3.8 or later
-- A virtual environment (recommended)
+Mnemonic Generation: Produces a 24-word BIP-39 mnemonic (using 256-bit entropy) for random key creation.
+Formatted Output: Outputs private keys (WIF), public keys (hex), and testnet addresses in a clean CLI table.
+Simplified Derivation: Derives 10 child keys by incrementing the base private key (note: this is a simplified approach, not full BIP-32 compliant).
+Robust Error Handling: Checks for invalid WIF formats, rejects mainnet keys, and manages derivation issues gracefully.
+Prerequisites
 
-## Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/samod667/bitcoin-address-generation-cli.git
-   cd bitcoin-address-generation-cli
-Set up a virtual environment:
-bash
-Wrap
-Copy
+Python 3.8 or later
+(Optional) A virtual environment for dependency isolation
+Installation
+
+Follow these steps to set up the project locally:
+
+Clone the Repository:
+git clone https://github.com/samod667/bitcoin-address-generation-cli.git
+cd bitcoin-address-generation-cli
+Set Up a Virtual Environment:
+# Linux/MacOS:
 python3 -m venv venv
-source venv/bin/activate  # Linux/MacOS
-venv\Scripts\activate     # Windows
-Install dependencies:
-bash
-Wrap
-Copy
+source venv/bin/activate
+
+# Windows:
+python -m venv venv
+venv\Scripts\activate
+Install Dependencies:
 pip install -r requirements.txt
 Usage
-Run the script with or without a private key argument:
 
-Generate a random key with mnemonic:
-bash
-Wrap
-Copy
+You can run the script with or without a private key argument.
+
+Generate a Random Key with Mnemonic
 python generate_address.py
-Use a specific testnet private key:
-bash
-Wrap
-Copy
-python generate_address.py cN9s...
+Use a Specific Testnet Private Key
+python generate_address.py <your_testnet_private_key>
 Example Output
 
 Random Key with Mnemonic
-
-text
-Wrap
-Copy
 Base Private Key (WIF): cN9s...
 Base Public Key (hex): 02...
 Mnemonic Words: apple banana cherry dog elephant fox grape horse igloo jelly kiwi lemon mango orange peach quince rabbit snake tiger umbrella violin whale xray zebra
@@ -75,10 +66,6 @@ Index  Private Key (WIF)                  Public Key (hex)                   Add
 9      cNa2...                            03...                              n...
 --------------------------------------------------------------------------------
 Specific Testnet Key
-
-text
-Wrap
-Copy
 Base Private Key (WIF): cN9s...
 Base Public Key (hex): 02...
 Mnemonic Words: N/A (provided private key)
@@ -89,27 +76,28 @@ Index  Private Key (WIF)                  Public Key (hex)                   Add
 --------------------------------------------------------------------------------
 0      cN9s...                            02...                              m...
 1      cN9t...                            03...                              n...
-...
+...    ...                                ...                                ...
 9      cNa2...                            03...                              n...
 --------------------------------------------------------------------------------
 Error Example
-
-text
-Wrap
-Copy
 Error: Invalid private key format or unexpected issue (Invalid base58 string)
 Notes
-Derivation: The tool uses a simplified method (incrementing the base private key integer) for educational purposes. It’s not cryptographically secure or BIP-32 compliant. For real-world use, implement proper HD wallet derivation (e.g., m/44'/1'/0'/0/[0-9]).
-Testnet Only: Supports testnet private keys (starting with c). Mainnet keys (e.g., starting with 5, K, or L) will trigger an error.
-Security: This is a learning project—do not use generated keys for real Bitcoin funds.
+
+Derivation Method: The tool uses a simplified derivation method (incrementing the base private key) for educational purposes. This approach is not cryptographically secure or BIP-32 compliant. For production applications, implement proper HD wallet derivation (e.g., m/44'/1'/0'/0/[0-9]).
+Testnet Only: Only testnet private keys (typically starting with c) are supported. Using mainnet keys (e.g., keys starting with 5, K, or L) will trigger an error.
+Security Notice: This is a learning project—do not use generated keys for actual Bitcoin funds.
 Contributing
-Feel free to fork, modify, or suggest improvements via pull requests! This is a beginner-friendly project, so all feedback is appreciated.
 
-License
-MIT License – free to use, modify, and distribute.
+Contributions are welcome! Feel free to fork the repository, suggest modifications, or submit pull requests. All feedback is appreciated, especially from beginners looking to learn and improve.
 
-Tags
+# License
+
+This project is licensed under the MIT License. You are free to use, modify, and distribute it as per the license terms.
+
+# Tags
+
 #BitcoinDev #Python #CLI #Cryptocurrency #LearningProject
 
-Acknowledgments
+# Acknowledgments
+
 Built with python-bitcoinlib and mnemonic.
