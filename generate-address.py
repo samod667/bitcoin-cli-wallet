@@ -413,6 +413,7 @@ def fetch_utxos(address: str, network: str) -> List[Dict]:
         return response.json()
     except requests.exceptions.RequestException as e:
         raise Exception(f"Failed to fetch UTXOs: {str(e)}")
+        
 def create_raw_transaction(utxos: List[Dict], to_address: str, amount_sat: int, from_privkey: str) -> bitcoin.core.CTransaction:
     """
     Create a raw Bitcoin transaction from UTXOs.
