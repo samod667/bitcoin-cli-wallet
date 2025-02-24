@@ -1,40 +1,13 @@
-# wallet/transactions.py
-
 import bitcoin
 import requests
-from bitcoin.core import CMutableTransaction, CMutableTxIn, CMutableTxOut, COutPoint
-from bitcoin.core.script import CScript, SignatureHash, SIGHASH_ALL
-from bitcoin.wallet import CBitcoinSecret, P2PKHBitcoinAddress
-from typing import Dict, List, Optional
+import random
+from bitcoin.core import CMutableTransaction, CMutableTxIn, CMutableTxOut, COutPoint, CTxWitness, CTxInWitness
+from bitcoin.core.script import CScript, SignatureHash, SIGHASH_ALL, OP_0, OP_HASH160, OP_EQUAL, SIGVERSION_WITNESS_V0
+from bitcoin.wallet import CBitcoinSecret, P2PKHBitcoinAddress, CBech32BitcoinAddress
+from bitcoin.core import Hash160
+from typing import Dict, List, Optional, Tuple
 from .network import fetch_utxos, get_recommended_fee_rate
-
-def calculate_tx_size(num_inputs: int, num_outputs: int) -> int:
-    """
-    Calculate the estimated virtual size of a transaction.
-    
-    A typical P2PKH transaction has:
-    - 4 bytes version
-    - 1 byte input count
-    - 148 bytes per input (approximate)
-    - 1 byte output count
-    - 34 bytes per output
-    - 4 bytes locktime
-    
-    Args:
-        num_inputs: Number of transaction inputs
-        num_outputs: Number of transaction outputs
-        
-    Returns:
-        Estimated transaction size in virtual bytes
-    """
-    return (
-        4 +  # Version
-        1 +  # Input count
-        (148 * num_inputs) +  # Input size
-        1 +  # Output count
-        (34 * num_outputs) +  # Output size
-        4    # Locktime
-    )
+from .privacy import address_manager, randomize_amount
 
 def create_payment_request(address: str, amount: Optional[float] = None, 
                          message: Optional[str] = None, network: str = "testnet") -> str:
@@ -68,34 +41,74 @@ def create_payment_request(address: str, amount: Optional[float] = None,
     
     return uri
 
+def is_segwit_address(address: str) -> bool:
+    """Check if an address is a SegWit address."""
+    return address.startswith(('bc1', 'tb1'))  # Mainnet and testnet bech32 prefixes
+
+def calculate_tx_size(num_inputs: int, num_outputs: int, is_segwit: bool = True) -> int:
+    """
+    Calculate the estimated virtual size of a transaction.
+    
+    For SegWit transactions:
+    - Base size: version(4) + input count(1) + inputs(36*n) + output count(1) + outputs(32*m) + locktime(4)
+    - Witness size: (signature(72) + pubkey(33))*n
+    - Virtual size = (base size * 4 + witness size) / 4
+    """
+    if is_segwit:
+        base_size = (
+            4 +  # Version
+            1 +  # Input count
+            (36 * num_inputs) +  # Input size (without script)
+            1 +  # Output count
+            (32 * num_outputs) +  # Output size
+            4    # Locktime
+        )
+        witness_size = (72 + 33) * num_inputs  # signature + pubkey per input
+        return (base_size * 4 + witness_size) // 4
+    else:
+        return (
+            4 +  # Version
+            1 +  # Input count
+            (148 * num_inputs) +  # Legacy input size
+            1 +  # Output count
+            (34 * num_outputs) +  # Output size
+            4    # Locktime
+        )
+
 def create_and_sign_transaction(from_address: str, from_privkey: str,
                               to_address: str, amount: float, 
-                              network: str, fee_priority: str = 'medium') -> bitcoin.core.CTransaction:
+                              network: str, fee_priority: str = 'medium',
+                              derived_addresses: List[Tuple] = None) -> bitcoin.core.CTransaction:
     """
-    Create and sign a Bitcoin transaction with dynamic fee calculation.
-    
-    This function creates a transaction with a fee calculated based on:
-    1. The estimated transaction size in virtual bytes
-    2. Current network fee recommendations
-    3. User's priority preference (high, medium, low)
+    Create and sign a Bitcoin transaction with improved privacy and SegWit support.
     
     Args:
-        from_address: Sender's Bitcoin address
-        from_privkey: Sender's private key in WIF format
-        to_address: Recipient's Bitcoin address
+        from_address: Sender's address
+        from_privkey: Sender's private key (WIF format)
+        to_address: Recipient's address
         amount: Amount to send in BTC
         network: Network type (mainnet, testnet, signet)
-        fee_priority: Desired fee priority level (high, medium, low)
-        
-    Returns:
-        A signed CTransaction object ready for broadcast
-    """
-    # Convert amount to satoshis
-    amount_sat = int(amount * 100_000_000)
+        fee_priority: Fee priority level (high, medium, low)
+        derived_addresses: List of derived addresses for privacy features
     
-    # Get recommended fee rates
+    Returns:
+        Signed transaction ready for broadcast
+    """
+    # Randomize the amount slightly to avoid round numbers
+    actual_amount = randomize_amount(amount)
+    amount_sat = int(actual_amount * 100_000_000)
+    
+    # Mark the sending address as used
+    address_manager.mark_address_used(from_address)
+    
+    # Determine if we're using SegWit
+    is_segwit_from = is_segwit_address(from_address)
+    is_segwit_to = is_segwit_address(to_address)
+    
+    # Get recommended fee rates with small random adjustment
     fee_rates = get_recommended_fee_rate(network)
-    fee_rate = fee_rates.get(fee_priority, fee_rates['medium'])
+    base_fee_rate = fee_rates.get(fee_priority, fee_rates['medium'])
+    fee_rate = base_fee_rate + random.randint(-1, 1)  # Add slight randomness
     
     # Fetch available UTXOs
     utxos = fetch_utxos(from_address, network)
@@ -113,14 +126,14 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
         selected_utxos.append(utxo)
         total_input += utxo['value']
         
-        # Calculate estimated fee for current transaction size
+        # Calculate estimated fee
         estimated_size = calculate_tx_size(
             num_inputs=len(selected_utxos),
-            num_outputs=2  # Assuming recipient output + change output
+            num_outputs=2,  # Assuming recipient output + change output
+            is_segwit=is_segwit_from
         )
         estimated_fee = estimated_size * fee_rate
         
-        # Check if we have enough funds
         if total_input >= amount_sat + estimated_fee:
             break
     
@@ -146,28 +159,61 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
     # Create transaction outputs
     tx_outputs = []
     
-    # Output for recipient
-    recipient_script = bitcoin.core.standard.CScript.to_p2pkh(
-        P2PKHBitcoinAddress(to_address).to_scriptPubKey()
-    )
+    # Create recipient output
+    if is_segwit_to:
+        recipient_addr = CBech32BitcoinAddress.from_bytes(0, Hash160(P2PKHBitcoinAddress(to_address).to_bytes()))
+    else:
+        recipient_addr = P2PKHBitcoinAddress(to_address)
+    recipient_script = recipient_addr.to_scriptPubKey()
     tx_outputs.append(CMutableTxOut(amount_sat, recipient_script))
     
     # Add change output if significant
     if change_amount >= 546:  # Dust threshold
-        change_script = bitcoin.core.standard.CScript.to_p2pkh(
-            public_key.to_p2pkh_scriptPubKey()
-        )
+        # Get a fresh change address if privacy is enabled
+        if derived_addresses:
+            change_address = address_manager.get_new_address(derived_addresses)
+            print(f"Using new change address: {change_address}")
+        else:
+            change_address = from_address
+            
+        # Randomize change amount slightly
+        change_amount = int(randomize_amount(change_amount / 100_000_000) * 100_000_000)
+        
+        # Create change output
+        if is_segwit_address(change_address):
+            change_addr = CBech32BitcoinAddress.from_bytes(0, Hash160(P2PKHBitcoinAddress(change_address).to_bytes()))
+        else:
+            change_addr = P2PKHBitcoinAddress(change_address)
+        change_script = change_addr.to_scriptPubKey()
         tx_outputs.append(CMutableTxOut(change_amount, change_script))
     
-    # Create and sign the transaction
+    # Create transaction
     tx = CMutableTransaction(tx_inputs, tx_outputs)
     
     # Sign each input
+    witness = CTxWitness()
+    
     for i, utxo in enumerate(selected_utxos):
-        script_pubkey = CScript([public_key, bitcoin.core.opcodes.OP_CHECKSIG])
-        sighash = SignatureHash(script_pubkey, tx, i, SIGHASH_ALL)
-        sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
-        tx.vin[i].scriptSig = CScript([sig, public_key])
+        if is_segwit_from:
+            # For SegWit, we sign the hash of the witnessScript
+            witness_script = CScript([OP_0, Hash160(public_key)])
+            sighash = SignatureHash(witness_script, tx, i, SIGHASH_ALL, 
+                                  amount=utxo['value'], sigversion=SIGVERSION_WITNESS_V0)
+            sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
+            
+            # Create witness
+            witness.vtxinwit.append(CTxInWitness(CScript([sig, public_key])))
+            # Empty scriptSig for SegWit
+            tx.vin[i].scriptSig = CScript()
+        else:
+            # Legacy signing
+            script_pubkey = P2PKHBitcoinAddress(from_address).to_scriptPubKey()
+            sighash = SignatureHash(script_pubkey, tx, i, SIGHASH_ALL)
+            sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
+            tx.vin[i].scriptSig = CScript([sig, public_key])
+    
+    if is_segwit_from:
+        tx.wit = witness
     
     return tx
 

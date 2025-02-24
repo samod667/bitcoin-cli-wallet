@@ -1,0 +1,24 @@
+1. fix network functionality. when using network=testnet addresses for mainnet are generated
+
+2. fix check balance. currently getting an argument error
+
+3. add see mempool and blockchain info command
+
+4. add loadwallet function.
+
+5. check all commands functionality 
+
+6. add testing 
+
+7. create a readable readme file
+
+8. Generate a new change address from the HD wallet instead of reusing the sender’s address.
+
+9. Interactive Mode:
+What: Add a --interactive flag for a menu-driven interface (e.g., "Generate wallet", "Send BTC", "Check balance").
+Why: Makes it friendlier for non-CLI-savvy users.
+
+10.Address Watching:
+What: Add a --watch mode to poll balances every few seconds.
+Why: Great for testing payments in real-time.
+How: Loop fetch_address_balance() with time.sleep().

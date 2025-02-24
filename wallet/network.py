@@ -1,22 +1,9 @@
-# wallet/network.py
-
 import requests
 from typing import Dict, Union, List
 
 def fetch_address_balance(address: str, network: str) -> Dict[str, Union[int, str, None]]:
     """
-    Fetch the balance of a Bitcoin address using Blockstream's Esplora API.
-    
-    This function queries the Blockstream API to get the current balance and
-    transaction count for a Bitcoin address. It handles both mainnet and testnet
-    addresses.
-    
-    Args:
-        address: The Bitcoin address to check
-        network: Network type (mainnet, testnet, signet)
-    
-    Returns:
-        Dictionary containing balance information and status
+    Fetch both confirmed and unconfirmed balance of a Bitcoin address.
     """
     api_urls = {
         "mainnet": "https://blockstream.info/api",
@@ -37,16 +24,32 @@ def fetch_address_balance(address: str, network: str) -> Dict[str, Union[int, st
         
         data = response.json()
         
-        balance_sat = data.get('chain_stats', {}).get('funded_txo_sum', 0) - \
-                     data.get('chain_stats', {}).get('spent_txo_sum', 0)
-        balance_btc = balance_sat / 100_000_000
+        # Calculate confirmed balance
+        confirmed_balance_sat = data.get('chain_stats', {}).get('funded_txo_sum', 0) - \
+                              data.get('chain_stats', {}).get('spent_txo_sum', 0)
         
-        tx_count = data.get('chain_stats', {}).get('tx_count', 0)
+        # Calculate unconfirmed balance
+        unconfirmed_balance_sat = data.get('mempool_stats', {}).get('funded_txo_sum', 0) - \
+                                 data.get('mempool_stats', {}).get('spent_txo_sum', 0)
+        
+        # Total balance (confirmed + unconfirmed)
+        total_balance_sat = confirmed_balance_sat + unconfirmed_balance_sat
+        
+        # Convert to BTC
+        total_balance_btc = total_balance_sat / 100_000_000
+        
+        # Get transaction counts
+        confirmed_tx_count = data.get('chain_stats', {}).get('tx_count', 0)
+        unconfirmed_tx_count = data.get('mempool_stats', {}).get('tx_count', 0)
         
         return {
-            "balance_sat": balance_sat,
-            "balance_btc": balance_btc,
-            "tx_count": tx_count,
+            "balance_sat": total_balance_sat,
+            "balance_btc": total_balance_btc,
+            "confirmed_balance_btc": confirmed_balance_sat / 100_000_000,
+            "unconfirmed_balance_btc": unconfirmed_balance_sat / 100_000_000,
+            "tx_count": confirmed_tx_count + unconfirmed_tx_count,
+            "confirmed_tx_count": confirmed_tx_count,
+            "unconfirmed_tx_count": unconfirmed_tx_count,
             "error": None
         }
         
@@ -57,7 +60,6 @@ def fetch_address_balance(address: str, network: str) -> Dict[str, Union[int, st
             "tx_count": None,
             "error": f"API request failed: {str(e)}"
         }
-
 def fetch_utxos(address: str, network: str) -> List[Dict]:
     """
     Fetch unspent transaction outputs (UTXOs) for an address.
@@ -82,28 +84,19 @@ def fetch_utxos(address: str, network: str) -> List[Dict]:
 def get_recommended_fee_rate(network: str) -> dict:
     """
     Fetch recommended fee rates from Mempool.space API.
-    
-    This function queries the Mempool.space API to get current fee recommendations
-    for different priority levels. The API provides fee estimates for various
-    confirmation target times:
-    - High priority: Targeting next block (10 minutes)
-    - Medium priority: Targeting 3 blocks (30 minutes)
-    - Low priority: Targeting 6 blocks (1 hour)
-    
-    Args:
-        network: Bitcoin network to use (mainnet, testnet, signet)
-        
-    Returns:
-        Dictionary containing fee rates in sat/vB for different priority levels
+    For testnet, use lower fee rates as the network is less congested.
     """
-    api_urls = {
-        "mainnet": "https://mempool.space/api/v1/fees/recommended",
-        "testnet": "https://mempool.space/testnet/api/v1/fees/recommended",
-        "signet": "https://mempool.space/signet/api/v1/fees/recommended"
-    }
+    # For testnet/signet, use lower fixed fees
+    if network in ["testnet", "signet"]:
+        return {
+            'high': 10,    # 10 sat/vB for high priority
+            'medium': 5,   # 5 sat/vB for medium priority
+            'low': 1       # 1 sat/vB for low priority
+        }
     
+    # For mainnet, use the API
     try:
-        response = requests.get(api_urls.get(network))
+        response = requests.get("https://mempool.space/api/v1/fees/recommended")
         response.raise_for_status()
         
         fee_recommendations = response.json()

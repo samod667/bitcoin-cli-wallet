@@ -1,6 +1,3 @@
-# wallet/__init__.py
-
-# Import main functionality to make it easily accessible
 from .keys import generate_wallet
 from .transactions import (
     create_payment_request,
@@ -10,6 +7,7 @@ from .transactions import (
 from .network import fetch_address_balance, fetch_utxos, get_recommended_fee_rate
 from .display import WalletDisplay
 from .qrcode import generate_ascii_qr
+from .privacy import address_manager, randomize_amount
 
 # Define what should be available when someone imports our package
 __all__ = [
@@ -21,7 +19,9 @@ __all__ = [
     'fetch_utxos',
     'WalletDisplay',
     'generate_ascii_qr',
-    'get_recommended_fee_rate'
+    'get_recommended_fee_rate',
+    'address_manager',
+    'randomize_amount'
 ]
 
 # Package metadata

@@ -1,5 +1,3 @@
-# wallet/qrcode.py
-
 import qrcode
 from typing import Optional
 
