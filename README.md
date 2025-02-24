@@ -1,108 +1,118 @@
-# Bitcoin Wallet CLI
+# Bitcoin CLI Wallet
 
-A Python-based Bitcoin wallet command-line interface that demonstrates the fundamental concepts of Bitcoin wallet operations, key generation, and transaction handling. This educational project helps understand how Bitcoin wallets work while providing practical functionality for testnet experimentation.
+A simple, command-line Bitcoin wallet for learning and experimentation, built as a beginner's dive into Bitcoin open-source development. Supports generating wallets, checking balances, creating payment requests, sending transactions, and more—focused on the testnet network for safe exploration.
+
+This is my first project after completing the Chaincode Labs BOSS program, so it’s a work in progress! I’ve leaned on AI tools to help me learn faster, but I’m proud of putting it all together into something functional.
 
 ## Features
-
-- Generate new Bitcoin wallets with hierarchical deterministic (HD) key derivation
-- Display multiple derived addresses with their corresponding private and public keys
-- Generate QR codes for Bitcoin addresses
-- Check address balances using the Blockstream API
-- Send and receive Bitcoin transactions
-- Dynamic fee calculation based on network conditions
-- Support for multiple networks (mainnet, testnet, signet)
-- Save wallet information to JSON files
-- Display transaction history and balances
+- Generate new wallets with mnemonic phrases or import existing private keys
+- Support for both SegWit (`tb1q...`) and Legacy (`m...`) addresses
+- Check address balances and transaction history (via Blockstream API)
+- Create payment requests with QR codes (ASCII in terminal)
+- Send Bitcoin transactions with configurable fee priorities
+- View blockchain and mempool info
+- Basic privacy options (new address generation, amount randomization—WIP)
+- Save/load wallet data to/from JSON files
+- Pretty terminal output with optional color and ASCII art
 
 ## Prerequisites
+- Python 3.8+
+- Dependencies listed in `requirements.txt` (see [Installation](#installation))
 
-Before running this wallet, ensure you have Python 3.7 or higher installed. You'll also need to install the required dependencies:
+## Installation
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/yourusername/bitcoin-cli-wallet.git
+   cd bitcoin-cli-wallet```
+
+2. Set up a virtual environment (optional but recommended):
+```
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+3. Install dependencies:
+```
+pip install -r requirements.txt
+```
+
+## Usage
+Run the wallet with python main.py and use the command-line options below. By default, it operates on Bitcoin’s testnet—perfect for testing without real funds.
+# Example 
+1. Generate Wallet:
+```
+python main.py --network testnet
+```
+Outputs a mnemonic phrase, private/public keys, and addresses.
+
+2. Check balances:
+```
+python main.py --network testnet --check-balance
+```
+3. Create a payment request:
+```
+python main.py --network testnet --receive --amount 0.001 --message "Coffee fund" --show-qr
+```
+4. Send Bitcoin (requires a private key with testnet funds):
+```
+python main.py --network testnet --send tb1q... --amount 0.0005 --privkey 93...
+```
+5. Check fee rates:
+```
+python main.py --network testnet --check-fees
+```
+6. View blockchain info:
+```
+python main.py --network testnet --blockchain-info
+```
+### Command-Line Options
+
+| Option             | Description                                      | Example                  |
+|--------------------|--------------------------------------------------|--------------------------|
+| `--network`        | Bitcoin network (mainnet, testnet, signet)       | `--network testnet`      |
+| `--address-type`   | Address type (legacy, segwit, both)              | `--address-type segwit`  |
+| `--check-balance`  | Show balances for all addresses                  | `--check-balance`        |
+| `--receive`        | Generate a payment request                       | `--receive`              |
+| `--amount`         | Amount in BTC for send/receive                   | `--amount 0.001`         |
+| `--send`           | Send BTC to an address                           | `--send tb1q...`         |
+| `--privkey`        | Use a specific private key (WIF format)          | `--privkey 93...`        |
+| `--fee-priority`   | Transaction fee priority (high, medium, low)     | `--fee-priority high`    |
+| `--privacy`        | Enable privacy features (WIP)                    | `--privacy`              |
+| `--show-qr`        | Display ASCII QR codes                           | `--show-qr`              |
+| `--output`         | Save wallet to a JSON file                       | `--output wallet.json`   |
+| `--load`           | Load wallet from a JSON file                     | `--load wallet.json`     |
+| `--check-fees`     | Show current fee rates                           | `--check-fees`           |
+| `--blockchain-info`| Display blockchain info                          | `--blockchain-info`      |
+| `--mempool-info`   | Display mempool info                             | `--mempool-info`         |
+
+> **Note**: Use testnet funds (get some from a faucet like [testnet-faucet.com](https://testnet-faucet.com)) to experiment safely.
+
+## Running Tests
+Tests verify core functionality like address generation and API calls. Run them with:
 
 ```bash
-pip install -r requirements.txt
-The following Python packages are required:
+pytest tests/
+```
+## Project Structure
+main.py: CLI entry point and argument parsing
+wallet.py: Wallet generation logic
+display.py: Terminal output formatting
+network.py: API interactions (Blockstream, etc.)
+privacy.py: Privacy-related utilities
+tests/: Test suite
 
-bitcoin-python
-bitcoinlib
-mnemonic
-qrcode
-requests
-art
+## Contributing
+This is a learning project, but contributions are alwayse welcome and feedback is welcome! Feel free to open an issue or reach out if you spot bugs or have ideas.
 
-Installation
+## Disclaimer
+This is an educational tool—not for production use with real funds. Always secure your private keys and mnemonic phrases, and double-check everything when dealing with Bitcoin
 
-Clone this repository:
-
-bashCopygit clone https://github.com/yourusername/bitcoin-wallet-cli.git
-cd bitcoin-wallet-cli
-
-Create and activate a virtual environment:
-
-bashCopypython -m venv venv
-source venv/bin/activate  # On Windows, use: venv\Scripts\activate
-
-Install dependencies:
-
-bashCopypip install -r requirements.txt
-Usage
-Generate a New Wallet
-bashCopypython main.py --network testnet
-Check Address Balance
-bashCopypython main.py --network testnet --check-balance YOUR_PRIVATE_KEY
-Display QR Codes
-bashCopypython main.py --network testnet --show-qr
-Create a Payment Request
-bashCopypython main.py --network testnet --receive --amount 0.001 --message "Payment for coffee"
-Send Bitcoin
-bashCopypython main.py --network testnet --send RECIPIENT_ADDRESS --amount 0.001 --fee-priority medium YOUR_PRIVATE_KEY
-Check Current Fee Rates
-bashCopypython main.py --network testnet --check-fees
-Save Wallet Information to File
-bashCopypython main.py --network testnet --output wallet.json
-Project Structure
-Copybitcoin-wallet-cli/
-├── wallet/
-│   ├── __init__.py
-│   ├── keys.py           # Key and address generation
-│   ├── transactions.py   # Transaction creation and broadcasting
-│   ├── network.py        # Network interactions and fee calculation
-│   ├── display.py        # Terminal output formatting
-│   └── qrcode.py        # QR code generation
-├── main.py               # Command-line interface
-└── requirements.txt      # Project dependencies
-Fee Priority Levels
-The wallet supports three fee priority levels:
-
-high: Targeting next block (approximately 10 minutes)
-medium: Targeting within 3 blocks (approximately 30 minutes)
-low: Targeting within 6 blocks (approximately 1 hour)
-
-Security Considerations
-This wallet is designed for educational purposes and testing on Bitcoin's testnet. When using on mainnet:
-
-Always backup your seed phrase and private keys
-Never share your private keys
-Verify recipient addresses carefully
-Test with small amounts first
-Be cautious with network fee settings
-
-# Testing
-To get testnet coins for testing:
-
-Generate a testnet address using the wallet
-Visit a testnet faucet (e.g., https://bitcoinfaucet.uo1.net/)
-Request test coins for your address
-Wait for the transaction to be confirmed
-
-# Contributing
-Contributions are welcome! Please feel free to submit pull requests.
-# License
-This project is licensed under the MIT License - see the LICENSE file for details.
-Acknowledgments
-
-Bitcoin developers for their documentation
-Blockstream for their API service
-The Python Bitcoin community for their libraries
-
-# Disclaimer
-This wallet is for educational purposes only. Use at your own risk. Always verify transactions and addresses carefully. The authors are not responsible for any lost funds or incorrect transactions.
+### Steps to Use It
+1. Open your editor, create or open `README.md` in your project root.
+2. Copy the entire block above (from `# Bitcoin CLI Wallet` to the end).
+3. Paste it into `README.md`.
+4. Replace `yourusername` in the `git clone` command with your actual GitHub username.
+5. Save, then push to GitHub:
+   ```bash
+   git add README.md
+   git commit -m "Add README"
+   git push origin main
