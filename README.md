@@ -1,4 +1,9 @@
 # Bitcoin CLI Wallet
+_____
+ /     \
+|  B   |
+ \_____/  
+  CLI Wallet
 
 A simple, command-line Bitcoin wallet for learning and experimentation, built as a beginner's dive into Bitcoin open-source development. Supports generating wallets, checking balances, creating payment requests, sending transactions, and more—focused on the testnet network for safe exploration.
 
