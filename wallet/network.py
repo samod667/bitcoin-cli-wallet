@@ -112,3 +112,93 @@ def get_recommended_fee_rate(network: str) -> dict:
             'medium': 10,
             'low': 5
         }
+    
+def get_blockchain_info(network: str = "testnet") -> dict:
+    """
+    Fetch comprehensive blockchain information from Blockstream API.
+    
+    Args:
+        network: Bitcoin network (mainnet, testnet, signet)
+    
+    Returns:
+        Dictionary with blockchain information
+    """
+    api_urls = {
+        "mainnet": "https://blockstream.info/api",
+        "testnet": "https://blockstream.info/testnet/api",
+        "signet": "https://blockstream.info/signet/api"
+    }
+    
+    base_url = api_urls.get(network, api_urls["testnet"])
+    
+    try:
+        # Fetch block height
+        block_height_response = requests.get(f"{base_url}/blocks/tip/height")
+        block_height = block_height_response.text
+        
+        # Fetch block hash
+        block_hash_response = requests.get(f"{base_url}/blocks/tip/hash")
+        block_hash = block_hash_response.text
+        
+        return {
+            "block_height": int(block_height),
+            "block_hash": block_hash
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_mempool_info(network: str = "testnet") -> dict:
+    """
+    Fetch detailed network information.
+    
+    Args:
+        network: Bitcoin network (mainnet, testnet, signet)
+    
+    Returns:
+        Dictionary with network statistics
+    """
+    # Updated API URLs
+    api_urls = {
+        "mainnet": "https://blockstream.info/api",
+        "testnet": "https://blockstream.info/testnet/api",
+        "signet": "https://blockstream.info/signet/api"
+    }
+    
+    base_url = api_urls.get(network, api_urls["testnet"])
+    
+    try:
+        # Fetch recent blocks
+        recent_blocks_response = requests.get(f"{base_url}/blocks")
+        recent_blocks_response.raise_for_status()
+        recent_blocks = recent_blocks_response.json()
+        
+        # Fetch blockchain tip height
+        block_height_response = requests.get(f"{base_url}/blocks/tip/height")
+        block_height_response.raise_for_status()
+        block_height = block_height_response.text
+        
+        # Fetch blockchain tip hash
+        block_hash_response = requests.get(f"{base_url}/blocks/tip/hash")
+        block_hash_response.raise_for_status()
+        block_hash = block_hash_response.text
+        
+        return {
+            "block_tip": int(block_height),
+            "recent_blocks_count": len(recent_blocks),
+            "last_block_hash": block_hash,
+            "fee_info": "Estimated from Blockstream API"
+        }
+    
+    except requests.RequestException as e:
+        return {
+            "error": f"Network error: {str(e)}",
+            "details": {
+                "url": base_url,
+                "network": network
+            }
+        }
+    except Exception as e:
+        return {
+            "error": f"Unexpected error: {str(e)}",
+            "traceback": str(e)
+        }

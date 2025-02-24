@@ -211,3 +211,82 @@ class WalletDisplay:
         print("\nQR Code:")
         qr_code = generate_ascii_qr(payment_uri, "Payment Request", "address", compact=True)
         print(qr_code)
+    @staticmethod
+    def show_blockchain_info(blockchain_info: dict) -> None:
+            """
+            Display blockchain information in a clear, formatted manner.
+            """
+            print("\n" + "=" * 50)
+            print(f"{'BLOCKCHAIN INFORMATION':.^50}")
+            print("=" * 50)
+            
+            if "error" in blockchain_info:
+                print(f"Error retrieving blockchain info: {blockchain_info['error']}")
+                return
+            
+            info_display = [
+                ("Block Height", blockchain_info.get("block_height", "N/A")),
+                ("Current Block Hash", blockchain_info.get("block_hash", "N/A"))
+            ]
+            
+            for label, value in info_display:
+                print(f"{label:<20}: {value}")
+            
+            print("=" * 50)
+
+    @staticmethod
+    def show_mempool_info(mempool_info: dict) -> None:
+        """
+        Display blockchain and network information in a clear, formatted manner.
+        """
+        print("\n" + "=" * 50)
+        print(f"{'NETWORK INFORMATION':.^50}")
+        print("=" * 50)
+        
+        # Check for different error scenarios
+        if "error" in mempool_info:
+            print(f"Error retrieving network info: {mempool_info['error']}")
+            
+            # If additional details are available, print them
+            if "details" in mempool_info:
+                print("\nAdditional Details:")
+                for key, value in mempool_info.get("details", {}).items():
+                    print(f"{key}: {value}")
+            
+            return
+        
+        # Display network information
+        info_display = [
+            ("Current Block Height", mempool_info.get("block_tip", "N/A")),
+            ("Recent Blocks", mempool_info.get("recent_blocks_count", "N/A")),
+            ("Last Block Hash", mempool_info.get("last_block_hash", "N/A")),
+            ("Fee Information", mempool_info.get("fee_info", "N/A"))
+        ]
+        
+        for label, value in info_display:
+            print(f"{label:<30}: {value}")
+        
+        print("=" * 50)
+    @staticmethod
+    def show_wallet_file_info(wallet_data: dict) -> None:
+        """
+        Display metadata about the loaded wallet file.
+        """
+        print("\n" + "=" * 50)
+        print(f"{'WALLET FILE INFORMATION':.^50}")
+        print("=" * 50)
+        
+        # Display key wallet file details
+        info_display = [
+            ("Network", wallet_data.get('network', 'N/A')),
+            ("Created At", wallet_data.get('created_at', 'N/A')),
+            ("Wallet Version", wallet_data.get('version', 'N/A')),
+            ("Total Addresses", wallet_data.get('metadata', {}).get('total_addresses', 'N/A')),
+            ("Address Types", ', '.join(wallet_data.get('metadata', {}).get('address_types', ['N/A'])))
+        ]
+        
+        for label, value in info_display:
+            print(f"{label:<20}: {value}")
+        
+        print("\nNote: Always keep your wallet file secure!")
+        print("=" * 50)

@@ -7,7 +7,9 @@ from wallet import (
     broadcast_transaction,
     WalletDisplay,
     get_recommended_fee_rate,
-    address_manager
+    address_manager,
+    get_mempool_info,
+    get_blockchain_info
 )
 
 def parse_args():
@@ -92,6 +94,21 @@ def parse_args():
         action="store_true",
         help="Check current recommended transaction fees"
     )
+    parser.add_argument(
+    "--blockchain-info",
+    action="store_true",
+    help="Retrieve and display current blockchain information"
+)
+    parser.add_argument(
+    "--mempool-info",
+    action="store_true",
+    help="Retrieve and display current mempool information"
+)
+    parser.add_argument(
+    "--load",
+    type=str,
+    help="Load wallet information from a JSON file"
+    )
     
     return parser.parse_args()
 
@@ -106,12 +123,16 @@ def display_fee_estimate(network: str, fee_priority: str):
 
 def save_to_json(filename: str, privkey: str, pubkey: str, 
                 mnemonic: str, addresses: list, network: str):
-    """Save wallet information to a JSON file."""
+    """Save wallet information to a JSON file with enhanced metadata."""
+    import datetime
+    
     data = {
+        "version": "1.0",  # Wallet file version
+        "created_at": datetime.datetime.now().isoformat(),
         "network": network,
         "private_key": privkey,
         "public_key": pubkey,
-        "mnemonic": mnemonic,
+        "mnemonic": mnemonic,  # Be cautious about storing mnemonic
         "addresses": [
             {
                 "index": addr[0],
@@ -120,12 +141,21 @@ def save_to_json(filename: str, privkey: str, pubkey: str,
                 "address": addr[3]
             }
             for addr in addresses
-        ]
+        ],
+        "metadata": {
+            "total_addresses": len(addresses),
+            "address_types": list(set(
+                "segwit" if addr[3].startswith(('tb1', 'bc1')) else "legacy" 
+                for addr in addresses
+            ))
+        }
     }
     
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
+    
     print(f"\nWallet information saved to {filename}")
+    print("WARNING: Keep this file secure and do not share your private key!")
 
 def main():
     """Main entry point for our Bitcoin wallet application."""
@@ -135,6 +165,50 @@ def main():
         if args.check_fees:
             display_fee_estimate(args.network, args.fee_priority or 'medium')
             return
+        if args.blockchain_info:
+            blockchain_info = get_blockchain_info(args.network)
+            WalletDisplay.show_blockchain_info(blockchain_info)
+            return
+
+        if args.mempool_info:
+            mempool_info = get_mempool_info(args.network)
+            WalletDisplay.show_mempool_info(mempool_info)
+            return
+        if args.load:
+            try:
+                # Load wallet from JSON file
+                with open(args.load, 'r') as f:
+                    wallet_data = json.load(f)
+                    WalletDisplay.show_wallet_file_info(wallet_data)
+                # Extract necessary information
+                privkey = wallet_data.get('private_key')
+                network = wallet_data.get('network', 'testnet')
+                
+                if not privkey:
+                    print("Error: No private key found in the wallet file.")
+                    return
+                
+                # Regenerate wallet using the private key
+                result = generate_wallet(privkey, network)
+                
+                # Display wallet information
+                privkey, pubkey, mnemonic, addresses = result
+                WalletDisplay.show_wallet_info(
+                    privkey, pubkey, mnemonic, addresses,
+                    network, show_balance=True
+                )
+                
+                return
+            
+            except FileNotFoundError:
+                print(f"Error: Wallet file '{args.load}' not found.")
+                return
+            except json.JSONDecodeError:
+                print(f"Error: Invalid JSON in wallet file '{args.load}'.")
+                return
+            except Exception as e:
+                print(f"Failed to load wallet: {str(e)}")
+                return
 
         # Get wallet information
         try:
