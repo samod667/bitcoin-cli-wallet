@@ -206,7 +206,8 @@ class InteractiveWallet:
                 load=None,
                 history=False,
                 limit=10,
-                rates=False
+                rates=False,
+                interactive=True
             )
             
             # Execute display command
@@ -273,7 +274,8 @@ class InteractiveWallet:
                 load=wallet_file,
                 history=False,
                 limit=10,
-                rates=False
+                rates=False,
+                interactive=True
             )
             
             # Execute display command
@@ -314,7 +316,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -371,7 +374,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -441,7 +445,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -481,7 +486,8 @@ class InteractiveWallet:
             load=None,
             history=True,
             limit=limit,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -511,7 +517,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -541,7 +548,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=True
+            rates=True,
+            interactive=True
         )
         
         # Execute command
@@ -571,7 +579,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command
@@ -601,7 +610,8 @@ class InteractiveWallet:
             load=None,
             history=False,
             limit=10,
-            rates=False
+            rates=False,
+            interactive=True
         )
         
         # Execute command

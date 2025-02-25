@@ -25,6 +25,7 @@ class CommandArguments(NamedTuple):
     limit: int
     rates: bool
     interactive: bool
+    utxos: bool
 
 class Command(ABC):
     """Base class for all CLI commands."""
@@ -152,6 +153,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     action="store_true",
     help="Start in interactive mode"
 )
+    parser.add_argument(
+    "--utxos",
+    action="store_true",
+    help="Show unspent transaction outputs (UTXOs)"
+)
     
     return parser
 
@@ -181,5 +187,6 @@ def parse_args() -> CommandArguments:
         history=args.history,
         limit=args.limit,
         rates=args.rates,
-        interactive=args.interactive
+        interactive=args.interactive,
+        utxos=args.utxos
     )

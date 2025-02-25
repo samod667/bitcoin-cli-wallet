@@ -21,7 +21,12 @@ from . import (
     get_mempool_info,
     get_blockchain_info
 )
-from .network import fetch_address_balance, get_recommended_fee_rate, get_exchange_rates  # Add this import
+from .network import (
+    fetch_address_balance, 
+    get_recommended_fee_rate, 
+    get_exchange_rates,
+    fetch_utxos_with_details  # Add this import
+)
 
 # Add this new import for transaction history
 def fetch_transaction_history(address: str, network: str, limit: int = 10) -> List[dict]:
@@ -373,6 +378,56 @@ class ExchangeRatesCommand(Command):
             WalletDisplay.show_exchange_rates(rates)
         except Exception as e:
             print(f"Failed to fetch exchange rates: {str(e)}")
+    
+class UTXOCommand(Command):
+    def __init__(self, args: CommandArguments, addresses: List[Tuple]):
+        self.args = args
+        self.addresses = addresses
+        self.network = args.network
+        self.address_type = args.address_type
+
+    def execute(self) -> None:
+        if not self.addresses:
+            print("No addresses available. Generate or load a wallet first.")
+            return
+
+        # Filter addresses based on address_type
+        filtered_addresses = []
+        for _, _, _, address in self.addresses:
+            is_segwit = address.startswith(('tb1', 'bc1'))
+            if (self.address_type == "both" or 
+                (self.address_type == "segwit" and is_segwit) or
+                (self.address_type == "legacy" and not is_segwit)):
+                filtered_addresses.append(address)
+        
+        if not filtered_addresses:
+            print(f"No {self.address_type} addresses found in wallet.")
+            return
+        
+        # Fetch UTXOs for each address
+        all_utxos = []
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True
+        ) as progress:
+            task = progress.add_task(
+                f"[cyan]Fetching UTXOs for {len(filtered_addresses)} addresses...", 
+                total=len(filtered_addresses)
+            )
+            
+            for address in filtered_addresses:
+                try:
+                    utxos = fetch_utxos_with_details(address, self.network)
+                    if utxos and "error" not in utxos[0]:
+                        all_utxos.extend(utxos)
+                    progress.update(task, advance=1)
+                except Exception as e:
+                    print(f"Error fetching UTXOs for {address}: {str(e)}")
+        
+        # Display UTXOs
+        WalletDisplay.show_utxos(all_utxos, self.network)
 
 def create_command(args: CommandArguments, addresses: Optional[List[Tuple]] = None) -> Command:
     """Factory function to create appropriate command based on arguments."""
@@ -392,5 +447,7 @@ def create_command(args: CommandArguments, addresses: Optional[List[Tuple]] = No
         return SendCommand(args, addresses)
     elif args.rates:
         return ExchangeRatesCommand(args)
+    elif args.utxos and addresses:
+        return UTXOCommand(args, addresses)
     else:
         return GenerateWalletCommand(args)

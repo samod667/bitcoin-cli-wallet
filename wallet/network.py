@@ -307,3 +307,72 @@ def get_exchange_rates() -> Dict[str, float]:
         return data.get("bitcoin", {})
     except Exception as e:
         return {"error": f"Failed to fetch exchange rates: {str(e)}"}
+
+def fetch_utxos_with_details(address: str, network: str) -> List[Dict]:
+    """
+    Fetch unspent transaction outputs (UTXOs) with additional details.
+    
+    Args:
+        address: Bitcoin address to check
+        network: Network type (mainnet, testnet, signet)
+        
+    Returns:
+        List of UTXOs with details
+    """
+    api_urls = {
+        "mainnet": "https://blockstream.info/api",
+        "testnet": "https://blockstream.info/testnet/api",
+        "signet": "https://blockstream.info/signet/api"
+    }
+    
+    base_url = api_urls.get(network)
+    if not base_url:
+        return [{"error": f"Unsupported network: {network}"}]
+    
+    try:
+        # Get basic UTXOs
+        response = requests.get(f"{base_url}/address/{address}/utxo")
+        response.raise_for_status()
+        
+        utxos = response.json()
+        detailed_utxos = []
+        
+        for utxo in utxos:
+            tx_id = utxo.get('txid')
+            vout = utxo.get('vout')
+            
+            # Get transaction details to enrich UTXO information
+            tx_response = requests.get(f"{base_url}/tx/{tx_id}")
+            tx_response.raise_for_status()
+            tx_data = tx_response.json()
+            
+            # Calculate confirmations
+            confirmations = 0
+            if 'status' in tx_data and tx_data['status'].get('confirmed'):
+                current_height_response = requests.get(f"{base_url}/blocks/tip/height")
+                current_height_response.raise_for_status()
+                current_height = int(current_height_response.text)
+                block_height = tx_data['status'].get('block_height', current_height)
+                confirmations = (current_height - block_height) + 1
+            
+            # Extract relevant details
+            detailed_utxo = {
+                "txid": tx_id,
+                "vout": vout,
+                "value": utxo.get('value', 0),
+                "value_btc": utxo.get('value', 0) / 100_000_000,
+                "script_pubkey": tx_data['vout'][vout]['scriptpubkey'],
+                "address": address,
+                "confirmations": confirmations,
+                "time": tx_data.get('status', {}).get('block_time', 0),
+                "date": datetime.datetime.fromtimestamp(tx_data.get('status', {}).get('block_time', 0)).strftime('%Y-%m-%d %H:%M') if tx_data.get('status', {}).get('block_time', 0) else "Pending",
+                "label": "",  # Optional user-assigned label
+                "selected": False  # For coin selection
+            }
+            
+            detailed_utxos.append(detailed_utxo)
+        
+        return detailed_utxos
+        
+    except requests.exceptions.RequestException as e:
+        return [{"error": f"Failed to fetch UTXOs: {str(e)}"}]

@@ -1069,3 +1069,109 @@ class WalletDisplay:
         
         print("-" * 50)
         print("Data provided by CoinGecko API")
+        
+    @staticmethod
+    def show_utxos(utxos: List[Dict], network: str) -> None:
+        """
+        Display UTXOs (unspent transaction outputs) for coin control.
+        
+        Args:
+            utxos: List of UTXOs with details
+            network: Network type
+        """
+        if not utxos:
+            print("No UTXOs found for this address.")
+            return
+        
+        if "error" in utxos[0]:
+            print(f"Error: {utxos[0]['error']}")
+            return
+        
+        if HAS_RICH:
+            WalletDisplay._show_utxos_rich(utxos, network)
+        else:
+            WalletDisplay._show_utxos_basic(utxos, network)
+
+    @staticmethod
+    def _show_utxos_rich(utxos: List[Dict], network: str) -> None:
+        """
+        Rich version of UTXO display.
+        """
+        explorer_urls = {
+            "mainnet": "https://blockstream.info",
+            "testnet": "https://blockstream.info/testnet",
+            "signet": "https://blockstream.info/signet"
+        }
+        
+        table = Table(title="Unspent Transaction Outputs (UTXOs)")
+        table.add_column("#", style="cyan", no_wrap=True)
+        table.add_column("Amount (BTC)", justify="right", style="green")
+        table.add_column("Confirmations", justify="right")
+        table.add_column("Date", style="magenta")
+        table.add_column("Transaction ID", style="blue")
+        
+        # Sort UTXOs by value (largest first) and confirmations (highest first)
+        sorted_utxos = sorted(utxos, key=lambda u: (-u.get('value', 0), -u.get('confirmations', 0)))
+        
+        for i, utxo in enumerate(sorted_utxos):
+            tx_id = utxo.get('txid', '')
+            short_tx_id = f"{tx_id[:8]}...{tx_id[-8:]}" if tx_id else "N/A"
+            explorer_url = f"{explorer_urls.get(network, explorer_urls['testnet'])}/tx/{tx_id}"
+            tx_id_display = f"[link={explorer_url}]{short_tx_id}[/link]"
+            
+            # Format confirmations
+            confirmations = utxo.get('confirmations', 0)
+            if confirmations == 0:
+                conf_display = "[yellow]Unconfirmed[/yellow]"
+            else:
+                conf_display = str(confirmations)
+            
+            table.add_row(
+                str(i + 1),
+                f"{utxo.get('value_btc', 0):.8f}",
+                conf_display,
+                utxo.get('date', 'Unknown'),
+                tx_id_display
+            )
+        
+        console.print(table)
+        
+        # Calculate total value
+        total_value = sum(utxo.get('value_btc', 0) for utxo in utxos)
+        
+        console.print(f"Total Available: [bold green]{total_value:.8f} BTC[/bold green]")
+        console.print("[dim]Note: UTXOs can be selected for spending using the coin control feature in interactive mode.[/dim]")
+
+    @staticmethod
+    def _show_utxos_basic(utxos: List[Dict], network: str) -> None:
+        """
+        Basic version of UTXO display.
+        """
+        print("\nUnspent Transaction Outputs (UTXOs):")
+        print("=" * 100)
+        print(f"{'#':<3} {'Amount (BTC)':<16} {'Confirmations':<14} {'Date':<18} {'Transaction ID':<65}")
+        print("-" * 100)
+        
+        # Sort UTXOs by value (largest first) and confirmations (highest first)
+        sorted_utxos = sorted(utxos, key=lambda u: (-u.get('value', 0), -u.get('confirmations', 0)))
+        
+        for i, utxo in enumerate(sorted_utxos):
+            tx_id = utxo.get('txid', '')
+            short_tx_id = f"{tx_id[:8]}...{tx_id[-8:]}" if tx_id else "N/A"
+            
+            # Format confirmations
+            confirmations = utxo.get('confirmations', 0)
+            if confirmations == 0:
+                conf_display = "Unconfirmed"
+            else:
+                conf_display = str(confirmations)
+            
+            print(f"{i+1:<3} {utxo.get('value_btc', 0):<16.8f} {conf_display:<14} {utxo.get('date', 'Unknown'):<18} {tx_id}")
+        
+        print("-" * 100)
+        
+        # Calculate total value
+        total_value = sum(utxo.get('value_btc', 0) for utxo in utxos)
+        
+        print(f"Total Available: {total_value:.8f} BTC")
+        print("Note: UTXOs can be selected for spending using the coin control feature in interactive mode.")
