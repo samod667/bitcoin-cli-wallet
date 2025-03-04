@@ -28,33 +28,139 @@ class WalletDisplay:
     """
     
     @staticmethod
-    def show_wallet_info(base_privkey: str, base_pubkey: str, 
-                        mnemonic_words: str, derived_addresses: List[Tuple],
-                        network: str, show_balance: bool = False, 
-                        show_qr: bool = False, address_type: str = "segwit") -> None:
+    def show_wallet_file_info(wallet_data: dict) -> None:
         """
-        Display complete wallet information with improved formatting.
-        
-        Args:
-            base_privkey: Base private key in WIF format
-            base_pubkey: Base public key in hex format
-            mnemonic_words: Mnemonic seed phrase
-            derived_addresses: List of derived addresses (index, privkey, pubkey, address)
-            network: Network type (mainnet, testnet, signet)
-            show_balance: Whether to display balance information
-            show_qr: Whether to display QR codes
-            address_type: Type of addresses to display ("legacy", "segwit", or "both")
+        Display metadata about the loaded wallet file.
         """
         if HAS_RICH:
-            WalletDisplay._show_wallet_info_rich(
-                base_privkey, base_pubkey, mnemonic_words, 
-                derived_addresses, network, show_balance, show_qr, address_type
-            )
+            WalletDisplay._show_wallet_file_info_rich(wallet_data)
         else:
-            WalletDisplay._show_wallet_info_basic(
-                base_privkey, base_pubkey, mnemonic_words, 
-                derived_addresses, network, show_balance, show_qr, address_type
-            )
+            WalletDisplay._show_wallet_file_info_basic(wallet_data)
+
+    @staticmethod
+    def _show_wallet_file_info_rich(wallet_data: dict) -> None:
+        """
+        Display wallet file information using Rich formatting.
+        """
+        console.print(Panel(
+            f"Wallet file loaded successfully",
+            title="Wallet File Info",
+            border_style="green"
+        ))
+        
+        # Display network and version
+        network = wallet_data.get('network', 'testnet')
+        version = wallet_data.get('version', 'N/A')
+        created_at = wallet_data.get('created_at', 'N/A')
+        
+        info_table = Table()
+        info_table.add_column("Property", style="cyan")
+        info_table.add_column("Value", style="yellow")
+        
+        info_table.add_row("Network", network.upper())
+        info_table.add_row("Version", version)
+        info_table.add_row("Created At", created_at)
+        
+        console.print(info_table)
+        
+        # Display metadata
+        if 'metadata' in wallet_data:
+            metadata = wallet_data['metadata']
+            console.print(Panel(
+                f"Total Addresses: {metadata.get('total_addresses', 'N/A')}\n"
+                f"Address Types: {', '.join(metadata.get('address_types', ['Unknown']))}",
+                title="Wallet Metadata",
+                border_style="blue"
+            ))
+    
+    @staticmethod
+    def _show_wallet_info_basic(base_privkey: str, base_pubkey: str, 
+                            mnemonic_words: str, derived_addresses: List[Tuple],
+                            network: str, show_balance: bool = False, 
+                            show_qr: bool = False, address_type: str = "segwit") -> None:
+        """
+        Original basic version of wallet info display.
+        """
+        # Display wallet header
+        print("\n" + text2art("Bitcoin Wallet", font="small"))
+        print(f"Network: {network.upper()}")
+        
+        # Show seed phrase for new wallets
+        if mnemonic_words == "N/A (provided private key)":
+            print("\nN/A (provided private key)")
+        else:
+            print("\nSeed Phrase (Keep Secret and Backup!):")
+            print(mnemonic_words)
+        
+        # Filter addresses based on address_type
+        segwit_addresses = []
+        legacy_addresses = []
+        
+        for addr in derived_addresses:
+            if addr[3].startswith(('tb1', 'bc1')):
+                segwit_addresses.append(addr)
+            elif addr[3].startswith(('m', 'n', '2', '1')):
+                legacy_addresses.append(addr)
+        
+        # Display SegWit Addresses if requested
+        if (address_type == "segwit" or address_type == "both") and segwit_addresses:
+            print("\n" + "=" * 50)
+            print(f"{'SEGWIT ADDRESSES (Native bech32)':.^50}")
+            print("=" * 50)
+            
+            # Create table header
+            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
+                    f"{'Public Key (hex)':<66} {'Address':<35}")
+            print(header)
+            print("-" * 160)
+            
+            # Display SegWit address information
+            for index, privkey, pubkey, address in segwit_addresses:
+                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
+                print(line)
+        
+        # Display Legacy Addresses if requested
+        if (address_type == "legacy" or address_type == "both") and legacy_addresses:
+            print("\n" + "=" * 50)
+            print(f"{'LEGACY ADDRESSES (P2PKH)':.^50}")
+            print("=" * 50)
+            
+            # Reuse the same header
+            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
+                    f"{'Public Key (hex)':<66} {'Address':<35}")
+            print(header)
+            print("-" * 160)
+            
+            # Display Legacy address information
+            for index, privkey, pubkey, address in legacy_addresses:
+                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
+                print(line)
+            
+            print("-" * 160)
+        
+        # Show balance information if requested
+        if show_balance:
+            # Only pass addresses of the requested type
+            if address_type == "both":
+                addresses_to_check = derived_addresses
+            elif address_type == "segwit":
+                addresses_to_check = segwit_addresses
+            else:  # legacy
+                addresses_to_check = legacy_addresses
+                
+            WalletDisplay._show_balances(addresses_to_check, network)
+        
+        # Show QR codes if requested
+        if show_qr:
+            # Only show QR codes for addresses of the requested type
+            if address_type == "both":
+                addresses_for_qr = derived_addresses
+            elif address_type == "segwit":
+                addresses_for_qr = segwit_addresses
+            else:  # legacy
+                addresses_for_qr = legacy_addresses
+                
+            WalletDisplay._show_qr_codes(addresses_for_qr)
 
     @staticmethod
     def _show_wallet_info_rich(base_privkey: str, base_pubkey: str, 
@@ -64,13 +170,6 @@ class WalletDisplay:
         """
         Rich version of wallet info display using the Rich library.
         """
-        # Display wallet header
-        console.print(Panel.fit(
-            "[bold blue]Bitcoin Wallet[/bold blue]", 
-            border_style="blue",
-            subtitle=f"Network: {network.upper()}"
-        ))
-        
         # Show seed phrase for new wallets
         if mnemonic_words == "N/A (provided private key)":
             console.print("\nN/A (provided private key)")
@@ -239,17 +338,18 @@ class WalletDisplay:
                 addresses_for_qr = legacy_addresses
                 
             WalletDisplay._show_qr_codes(addresses_for_qr)
-    
+
     @staticmethod
     def _show_wallet_info_basic(base_privkey: str, base_pubkey: str, 
-                               mnemonic_words: str, derived_addresses: List[Tuple],
-                               network: str, show_balance: bool = False, 
-                               show_qr: bool = False) -> None:
+                            mnemonic_words: str, derived_addresses: List[Tuple],
+                            network: str, show_balance: bool = False, 
+                            show_qr: bool = False, address_type: str = "segwit") -> None:
         """
         Original basic version of wallet info display.
         """
         # Display wallet header
         print("\n" + text2art("Bitcoin Wallet", font="small"))
+        print(f"Network: {network.upper()}")
         
         # Show seed phrase for new wallets
         if mnemonic_words == "N/A (provided private key)":
@@ -258,7 +358,7 @@ class WalletDisplay:
             print("\nSeed Phrase (Keep Secret and Backup!):")
             print(mnemonic_words)
         
-        # Separate SegWit and Legacy addresses
+        # Filter addresses based on address_type
         segwit_addresses = []
         legacy_addresses = []
         
@@ -268,45 +368,104 @@ class WalletDisplay:
             elif addr[3].startswith(('m', 'n', '2', '1')):
                 legacy_addresses.append(addr)
         
-        # Display SegWit Addresses
-        print("\n" + "=" * 50)
-        print(f"{'SEGWIT ADDRESSES (Native bech32)':.^50}")
-        print("=" * 50)
+        # Display SegWit Addresses if requested
+        if (address_type == "segwit" or address_type == "both") and segwit_addresses:
+            print("\n" + "=" * 50)
+            print(f"{'SEGWIT ADDRESSES (Native bech32)':.^50}")
+            print("=" * 50)
+            
+            # Create table header
+            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
+                    f"{'Public Key (hex)':<66} {'Address':<35}")
+            print(header)
+            print("-" * 160)
+            
+            # Display SegWit address information
+            for index, privkey, pubkey, address in segwit_addresses:
+                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
+                print(line)
         
-        # Create table header
-        header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
-                f"{'Public Key (hex)':<66} {'Address':<35}")
-        print(header)
-        print("-" * 160)
-        
-        # Display SegWit address information
-        for index, privkey, pubkey, address in segwit_addresses:
-            line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
-            print(line)
-        
-        # Display Legacy Addresses
-        print("\n" + "=" * 50)
-        print(f"{'LEGACY ADDRESSES (P2PKH)':.^50}")
-        print("=" * 50)
-        
-        # Reuse the same header
-        print(header)
-        print("-" * 160)
-        
-        # Display Legacy address information
-        for index, privkey, pubkey, address in legacy_addresses:
-            line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
-            print(line)
-        
-        print("-" * 160)
+        # Display Legacy Addresses if requested
+        if (address_type == "legacy" or address_type == "both") and legacy_addresses:
+            print("\n" + "=" * 50)
+            print(f"{'LEGACY ADDRESSES (P2PKH)':.^50}")
+            print("=" * 50)
+            
+            # Reuse the same header
+            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
+                    f"{'Public Key (hex)':<66} {'Address':<35}")
+            print(header)
+            print("-" * 160)
+            
+            # Display Legacy address information
+            for index, privkey, pubkey, address in legacy_addresses:
+                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
+                print(line)
+            
+            print("-" * 160)
         
         # Show balance information if requested
         if show_balance:
-            WalletDisplay._show_balances(derived_addresses, network)
+            # Only pass addresses of the requested type
+            if address_type == "both":
+                addresses_to_check = derived_addresses
+            elif address_type == "segwit":
+                addresses_to_check = segwit_addresses
+            else:  # legacy
+                addresses_to_check = legacy_addresses
+                
+            WalletDisplay._show_balances(addresses_to_check, network)
         
         # Show QR codes if requested
         if show_qr:
-            WalletDisplay._show_qr_codes(derived_addresses)
+            # Only show QR codes for addresses of the requested type
+            if address_type == "both":
+                addresses_for_qr = derived_addresses
+            elif address_type == "segwit":
+                addresses_for_qr = segwit_addresses
+            else:  # legacy
+                addresses_for_qr = legacy_addresses
+                
+            WalletDisplay._show_qr_codes(addresses_for_qr)
+    
+    
+    @staticmethod
+    def show_wallet_info(base_privkey: str, base_pubkey: str, 
+                        mnemonic_words: str, derived_addresses: List[Tuple],
+                        network: str, show_balance: bool = False, 
+                        show_qr: bool = False, address_type: str = "segwit",
+                        command_name: str = None) -> None:
+        """
+        Display complete wallet information with improved formatting.
+        
+        Args:
+            base_privkey: Base private key in WIF format
+            base_pubkey: Base public key in hex format
+            mnemonic_words: Mnemonic seed phrase
+            derived_addresses: List of derived addresses (index, privkey, pubkey, address)
+            network: Network type (mainnet, testnet, signet)
+            show_balance: Whether to display balance information
+            show_qr: Whether to display QR codes
+            address_type: Type of addresses to display ("legacy", "segwit", or "both")
+            command_name: Optional command name for title display
+        """
+        if HAS_RICH:
+            # Display title with optional command name
+            if command_name:
+                WalletDisplay.display_title("Bitcoin Wallet", command_name=command_name, network=network)
+            else:
+                WalletDisplay.display_title("Bitcoin Wallet", network=network)
+                
+            # Show detailed wallet info
+            WalletDisplay._show_wallet_info_rich(
+                base_privkey, base_pubkey, mnemonic_words, 
+                derived_addresses, network, show_balance, show_qr, address_type
+            )
+        else:
+            WalletDisplay._show_wallet_info_basic(
+                base_privkey, base_pubkey, mnemonic_words, 
+                derived_addresses, network, show_balance, show_qr, address_type
+            )
     
     @staticmethod
     def _show_balances(derived_addresses: List[Tuple], network: str) -> None:
@@ -330,91 +489,71 @@ class WalletDisplay:
         ) as progress:
             task = progress.add_task("[cyan]Fetching balances...", total=len(derived_addresses))
             
-            # Separate addresses by type
-            segwit_addresses = []
-            legacy_addresses = []
+            # Only process SegWit addresses now
+            addresses_with_balances = []
             
             for index, privkey, pubkey, address in derived_addresses:
                 balance_info = fetch_address_balance(address, network)
                 
-                # Determine address type
-                if address.startswith(('tb1', 'bc1')):
-                    addr_type = 'SegWit'
-                    segwit_addresses.append({
-                        'index': index,
-                        'address': address,
-                        'type': addr_type,
-                        'balance_info': balance_info
-                    })
-                else:
-                    addr_type = 'Legacy'
-                    legacy_addresses.append({
-                        'index': index,
-                        'address': address,
-                        'type': addr_type,
-                        'balance_info': balance_info
-                    })
+                addresses_with_balances.append({
+                    'index': index,
+                    'address': address,
+                    'type': 'SegWit',
+                    'balance_info': balance_info
+                })
                 
                 progress.update(task, advance=1)
         
-        # Function to display address section
-        def display_address_section(addresses, section_title):
-            if not addresses:
-                return
-            
-            # Create table
-            table = Table(title=f"{section_title} Addresses")
-            table.add_column("Index", style="cyan", no_wrap=True)
-            table.add_column("Address", style="green")
-            table.add_column("Confirmed (BTC)", justify="right", style="magenta")
-            table.add_column("Pending (BTC)", justify="right", style="yellow")
-            table.add_column("Transactions", justify="right")
-            
-            for addr in addresses:
-                balance_info = addr['balance_info']
-                
-                if balance_info["error"]:
-                    table.add_row(
-                        str(addr['index']),
-                        addr['address'],
-                        f"[red]Error: {balance_info['error']}[/red]",
-                        "",
-                        ""
-                    )
-                else:
-                    # Format balances
-                    confirmed_balance = balance_info.get('confirmed_balance_btc', 0)
-                    unconfirmed_balance = balance_info.get('unconfirmed_balance_btc', 0)
-                    tx_count = balance_info.get('tx_count', 0)
-                    unconf_count = balance_info.get('unconfirmed_tx_count', 0)
-                    
-                    # Add color based on balance
-                    confirmed_style = "green" if confirmed_balance > 0 else "white"
-                    unconfirmed_style = "yellow" if unconfirmed_balance > 0 else "white"
-                    
-                    table.add_row(
-                        str(addr['index']),
-                        addr['address'],
-                        f"[{confirmed_style}]{confirmed_balance:.8f}[/{confirmed_style}]",
-                        f"[{unconfirmed_style}]{unconfirmed_balance:.8f}[/{unconfirmed_style}]",
-                        f"{tx_count} ({unconf_count} pending)"
-                    )
-            
-            console.print(table)
+        # Create table for all addresses (now only SegWit)
+        table = Table(title="SegWit Addresses")
+        table.add_column("Index", style="cyan", no_wrap=True)
+        table.add_column("Address", style="green")
+        table.add_column("Confirmed (BTC)", justify="right", style="magenta")
+        table.add_column("Pending (BTC)", justify="right", style="yellow")
+        table.add_column("Transactions", justify="right")
         
-        # Display both SegWit and Legacy address sections
-        display_address_section(segwit_addresses, "SegWit")
-        display_address_section(legacy_addresses, "Legacy")
+        for addr in addresses_with_balances:
+            balance_info = addr['balance_info']
+            
+            if balance_info.get("error"):
+                table.add_row(
+                    str(addr['index']),
+                    addr['address'],
+                    f"[red]Error: {balance_info['error']}[/red]",
+                    "",
+                    ""
+                )
+            else:
+                # Format balances
+                confirmed_balance = balance_info.get('confirmed_balance_btc', 0)
+                unconfirmed_balance = balance_info.get('unconfirmed_balance_btc', 0)
+                tx_count = balance_info.get('tx_count', 0)
+                unconf_count = balance_info.get('unconfirmed_tx_count', 0)
+                
+                # Add color based on balance
+                confirmed_style = "green" if confirmed_balance > 0 else "white"
+                unconfirmed_style = "yellow" if unconfirmed_balance > 0 else "white"
+                
+                table.add_row(
+                    str(addr['index']),
+                    addr['address'],
+                    f"[{confirmed_style}]{confirmed_balance:.8f}[/{confirmed_style}]",
+                    f"[{unconfirmed_style}]{unconfirmed_balance:.8f}[/{unconfirmed_style}]",
+                    f"{tx_count} ({unconf_count} pending)"
+                )
+        
+        # Display the table with balances
+        console.print(table)
         
         # Calculate and display total balance
         total_confirmed = sum(
             a['balance_info'].get('confirmed_balance_btc', 0) 
-            for a in segwit_addresses + legacy_addresses 
+            for a in addresses_with_balances 
             if not a['balance_info'].get('error')
         )
         total_unconfirmed = sum(
             a['balance_info'].get('unconfirmed_balance_btc', 0) 
-            for a in segwit_addresses + legacy_addresses 
+            for a in addresses_with_balances 
             if not a['balance_info'].get('error')
         )
         
@@ -425,7 +564,6 @@ class WalletDisplay:
             title="Wallet Balance Summary",
             border_style="green"
         ))
-    
     @staticmethod
     def _show_balances_basic(derived_addresses: List[Tuple], network: str) -> None:
         """
@@ -757,113 +895,6 @@ class WalletDisplay:
             WalletDisplay._show_wallet_file_info_basic(wallet_data)
     
     @staticmethod
-    def _show_wallet_file_info_rich(wallet_data: dict) -> None:
-        """
-        Rich version of wallet file info display.
-        """
-        content = [
-            f"Network: [bold]{wallet_data.get('network', 'N/A')}[/bold]",
-            f"Created At: {wallet_data.get('created_at', 'N/A')}",
-            f"Wallet Version: {wallet_data.get('version', 'N/A')}",
-            f"Total Addresses: {wallet_data.get('metadata', {}).get('total_addresses', 'N/A')}",
-            f"Address Types: {', '.join(wallet_data.get('metadata', {}).get('address_types', ['N/A']))}"
-        ]
-        
-        console.print(Panel(
-            "\n".join(content),
-            title="Wallet File Information",
-            border_style="cyan",
-            subtitle="[red]Keep your wallet file secure![/red]"
-        ))
-    
-    @staticmethod
-    def _show_wallet_info_basic(base_privkey: str, base_pubkey: str, 
-                            mnemonic_words: str, derived_addresses: List[Tuple],
-                            network: str, show_balance: bool = False, 
-                            show_qr: bool = False, address_type: str = "segwit") -> None:
-        """
-        Original basic version of wallet info display.
-        """
-        # Display wallet header
-        print("\n" + text2art("Bitcoin Wallet", font="small"))
-        
-        # Show seed phrase for new wallets
-        if mnemonic_words == "N/A (provided private key)":
-            print("\nN/A (provided private key)")
-        else:
-            print("\nSeed Phrase (Keep Secret and Backup!):")
-            print(mnemonic_words)
-        
-        # Filter addresses based on address_type
-        segwit_addresses = []
-        legacy_addresses = []
-        
-        for addr in derived_addresses:
-            if addr[3].startswith(('tb1', 'bc1')):
-                segwit_addresses.append(addr)
-            elif addr[3].startswith(('m', 'n', '2', '1')):
-                legacy_addresses.append(addr)
-        
-        # Display SegWit Addresses if requested
-        if (address_type == "segwit" or address_type == "both") and segwit_addresses:
-            print("\n" + "=" * 50)
-            print(f"{'SEGWIT ADDRESSES (Native bech32)':.^50}")
-            print("=" * 50)
-            
-            # Create table header
-            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
-                    f"{'Public Key (hex)':<66} {'Address':<35}")
-            print(header)
-            print("-" * 160)
-            
-            # Display SegWit address information
-            for index, privkey, pubkey, address in segwit_addresses:
-                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
-                print(line)
-        
-        # Display Legacy Addresses if requested
-        if (address_type == "legacy" or address_type == "both") and legacy_addresses:
-            print("\n" + "=" * 50)
-            print(f"{'LEGACY ADDRESSES (P2PKH)':.^50}")
-            print("=" * 50)
-            
-            # Reuse the same header
-            header = (f"{'Index':<6} {'Private Key (WIF)':<52} "
-                    f"{'Public Key (hex)':<66} {'Address':<35}")
-            print(header)
-            print("-" * 160)
-            
-            # Display Legacy address information
-            for index, privkey, pubkey, address in legacy_addresses:
-                line = f"{index:<6} {privkey:<52} {pubkey:<66} {address:<35}"
-                print(line)
-            
-            print("-" * 160)
-        
-        # Show balance information if requested
-        if show_balance:
-            # Only pass addresses of the requested type
-            if address_type == "both":
-                addresses_to_check = derived_addresses
-            elif address_type == "segwit":
-                addresses_to_check = segwit_addresses
-            else:  # legacy
-                addresses_to_check = legacy_addresses
-                
-            WalletDisplay._show_balances(addresses_to_check, network)
-        
-        # Show QR codes if requested
-        if show_qr:
-            # Only show QR codes for addresses of the requested type
-            if address_type == "both":
-                addresses_for_qr = derived_addresses
-            elif address_type == "segwit":
-                addresses_for_qr = segwit_addresses
-            else:  # legacy
-                addresses_for_qr = legacy_addresses
-                
-            WalletDisplay._show_qr_codes(addresses_for_qr)
-    @staticmethod
     def show_transaction_history(transactions: List[Dict], network: str) -> None:
         """
         Display transaction history with rich formatting.
@@ -886,7 +917,10 @@ class WalletDisplay:
         """
         Rich version of transaction history display.
         """
-        table = Table(title="Transaction History")
+        # Display enhanced title
+        WalletDisplay.display_title("Bitcoin Wallet", command_name="Transaction History", network=network)
+        
+        table = Table(title="Recent Transactions")
         table.add_column("Date", style="cyan")
         table.add_column("Type", style="green")
         table.add_column("Amount (BTC)", justify="right")
@@ -894,7 +928,7 @@ class WalletDisplay:
         table.add_column("Status", style="yellow")
         table.add_column("Confirmations", justify="right")
         table.add_column("Transaction ID", style="blue")
-        
+            
         for tx in transactions:
             # Format amount with color based on transaction type
             amount = tx.get('amount_btc', 0)
@@ -1175,3 +1209,74 @@ class WalletDisplay:
         
         print(f"Total Available: {total_value:.8f} BTC")
         print("Note: UTXOs can be selected for spending using the coin control feature in interactive mode.")
+
+    @staticmethod
+    def display_title(title: str = "Bitcoin Wallet", subtitle: str = None, command_name: str = None, network: str = "testnet"):
+        """
+        Display an enhanced professional title for wallet commands.
+        
+        Args:
+            title: Main title text
+            subtitle: Optional subtitle
+            command_name: Current command being executed
+            network: Current network (mainnet, testnet, signet)
+        """
+        if HAS_RICH:
+            from rich.console import Console
+            from rich.panel import Panel
+            from rich.align import Align
+            from rich.text import Text
+            
+            # Create styled title with larger text effect
+            title_text = Text(title.upper(), style="bold blue")
+            
+            # Create full content text object
+            content_text = Text("⬢ ")
+            content_text.append(title_text)
+            content_text.append(" ⬢")
+            
+            # Add command info if provided
+            if command_name:
+                command_display = Text(f"\n{command_name} command", style="bold green")
+                content_text.append(command_display)
+            
+            # Add version
+            content_text.append(Text("\nv1.0.0", style="dim"))
+            
+            # Now wrap the complete text in an Align
+            content = Align.center(content_text)
+            
+            # Create network indicator based on network type
+            network_style = {
+                "mainnet": "bold white on red",
+                "testnet": "bold black on yellow",
+                "signet": "bold white on blue"
+            }.get(network.lower(), "bold black on yellow")
+            
+            network_display = f"[{network_style}] {network.upper()} [{network_style}]"
+            
+            # Create and display panel
+            panel = Panel(
+                content,
+                border_style="blue",
+                subtitle=subtitle or network_display,
+                width=60,
+                padding=(1, 15)
+            )
+            
+            console.print("\n")
+            console.print(panel)
+            console.print("\n")
+        else:
+            # Fallback ASCII art version
+            from art import text2art
+            
+            print("\n" + "=" * 60)
+            print(text2art(title, font="small"))
+            
+            if command_name:
+                print(f"Command: {command_name}")
+            
+            print(f"Network: {network.upper()}")
+            print("=" * 60)
+            print()

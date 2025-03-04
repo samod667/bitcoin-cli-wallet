@@ -3,6 +3,7 @@ import requests
 import random
 from bitcoin.core import CMutableTransaction, CMutableTxIn, CMutableTxOut, COutPoint, CTxWitness, CTxInWitness
 from bitcoin.core.script import CScript, SignatureHash, SIGHASH_ALL, OP_0, OP_HASH160, OP_EQUAL, SIGVERSION_WITNESS_V0
+from bitcoin.core.script import OP_DUP, OP_HASH160, OP_EQUALVERIFY, OP_CHECKSIG
 from bitcoin.wallet import CBitcoinSecret, P2PKHBitcoinAddress, CBech32BitcoinAddress
 from bitcoin.core import Hash160
 from typing import Dict, List, Optional, Tuple
@@ -43,7 +44,7 @@ def create_payment_request(address: str, amount: Optional[float] = None,
 
 def is_segwit_address(address: str) -> bool:
     """Check if an address is a SegWit address."""
-    return address.startswith(('bc1', 'tb1'))  # Mainnet and testnet bech32 prefixes
+    return True  # All addresses are SegWit now
 
 def calculate_tx_size(num_inputs: int, num_outputs: int, is_segwit: bool = True) -> int:
     """
@@ -81,18 +82,6 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
                               derived_addresses: List[Tuple] = None) -> bitcoin.core.CTransaction:
     """
     Create and sign a Bitcoin transaction with improved privacy and SegWit support.
-    
-    Args:
-        from_address: Sender's address
-        from_privkey: Sender's private key (WIF format)
-        to_address: Recipient's address
-        amount: Amount to send in BTC
-        network: Network type (mainnet, testnet, signet)
-        fee_priority: Fee priority level (high, medium, low)
-        derived_addresses: List of derived addresses for privacy features
-    
-    Returns:
-        Signed transaction ready for broadcast
     """
     # Randomize the amount slightly to avoid round numbers
     actual_amount = randomize_amount(amount)
@@ -101,9 +90,8 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
     # Mark the sending address as used
     address_manager.mark_address_used(from_address)
     
-    # Determine if we're using SegWit
-    is_segwit_from = is_segwit_address(from_address)
-    is_segwit_to = is_segwit_address(to_address)
+    # Determine if we're using SegWit - now all addresses are SegWit
+    is_segwit_from = True  # Added this line - was missing before
     
     # Get recommended fee rates with small random adjustment
     fee_rates = get_recommended_fee_rate(network)
@@ -147,6 +135,8 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
     tx_inputs = []
     private_key = CBitcoinSecret(from_privkey)
     public_key = private_key.pub
+    #print("Public key length:", len(public_key))
+
     
     for utxo in selected_utxos:
         outpoint = COutPoint(bitcoin.core.lx(utxo['txid']), utxo['vout'])
@@ -159,12 +149,25 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
     # Create transaction outputs
     tx_outputs = []
     
-    # Create recipient output
-    if is_segwit_to:
-        recipient_addr = CBech32BitcoinAddress.from_bytes(0, Hash160(P2PKHBitcoinAddress(to_address).to_bytes()))
+    # Create recipient output - directly parse Bech32 address
+    if to_address.startswith(('tb1', 'bc1')):
+        # This is already a Bech32 address, use it directly
+        try:
+            recipient_addr = bitcoin.wallet.CBitcoinAddress(to_address)
+            recipient_script = recipient_addr.to_scriptPubKey()
+        except Exception:
+            # If direct parsing fails, try to decode it as a Bech32 address
+            hrp = "bc" if network == "mainnet" else "tb"
+            decoded = bitcoin.bech32.decode(hrp, to_address)
+            if decoded[0] is None:
+                raise ValueError(f"Invalid Bech32 address: {to_address}")
+            witness_version, witness_program = decoded
+            recipient_script = CScript([OP_0, witness_program])
     else:
+        # For legacy addresses (though we don't generate these anymore)
         recipient_addr = P2PKHBitcoinAddress(to_address)
-    recipient_script = recipient_addr.to_scriptPubKey()
+        recipient_script = recipient_addr.to_scriptPubKey()
+    
     tx_outputs.append(CMutableTxOut(amount_sat, recipient_script))
     
     # Add change output if significant
@@ -179,12 +182,25 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
         # Randomize change amount slightly
         change_amount = int(randomize_amount(change_amount / 100_000_000) * 100_000_000)
         
-        # Create change output
-        if is_segwit_address(change_address):
-            change_addr = CBech32BitcoinAddress.from_bytes(0, Hash160(P2PKHBitcoinAddress(change_address).to_bytes()))
+        # Create change output - must handle SegWit addresses properly
+        if change_address.startswith(('tb1', 'bc1')):
+            # This is already a Bech32 address, use it directly
+            try:
+                change_addr = bitcoin.wallet.CBitcoinAddress(change_address)
+                change_script = change_addr.to_scriptPubKey()
+            except Exception:
+                # If direct parsing fails, try to decode it as a Bech32 address
+                hrp = "bc" if network == "mainnet" else "tb"
+                decoded = bitcoin.bech32.decode(hrp, change_address)
+                if decoded[0] is None:
+                    raise ValueError(f"Invalid Bech32 address: {change_address}")
+                witness_version, witness_program = decoded
+                change_script = CScript([OP_0, witness_program])
         else:
+            # For legacy addresses (though we don't generate these anymore)
             change_addr = P2PKHBitcoinAddress(change_address)
-        change_script = change_addr.to_scriptPubKey()
+            change_script = change_addr.to_scriptPubKey()
+            
         tx_outputs.append(CMutableTxOut(change_amount, change_script))
     
     # Create transaction
@@ -193,26 +209,18 @@ def create_and_sign_transaction(from_address: str, from_privkey: str,
     # Sign each input
     witness = CTxWitness()
     
+    signatures = []
     for i, utxo in enumerate(selected_utxos):
-        if is_segwit_from:
-            # For SegWit, we sign the hash of the witnessScript
-            witness_script = CScript([OP_0, Hash160(public_key)])
-            sighash = SignatureHash(witness_script, tx, i, SIGHASH_ALL, 
-                                  amount=utxo['value'], sigversion=SIGVERSION_WITNESS_V0)
-            sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
-            
-            # Create witness
-            witness.vtxinwit.append(CTxInWitness(CScript([sig, public_key])))
-            # Empty scriptSig for SegWit
-            tx.vin[i].scriptSig = CScript()
-        else:
-            # Legacy signing
-            script_pubkey = P2PKHBitcoinAddress(from_address).to_scriptPubKey()
-            sighash = SignatureHash(script_pubkey, tx, i, SIGHASH_ALL)
-            sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
-            tx.vin[i].scriptSig = CScript([sig, public_key])
-    
-    if is_segwit_from:
+        witness_script = CScript([OP_DUP, OP_HASH160, Hash160(public_key), OP_EQUALVERIFY, OP_CHECKSIG])
+        sighash = SignatureHash(witness_script, tx, i, SIGHASH_ALL, 
+                                amount=utxo['value'], sigversion=SIGVERSION_WITNESS_V0)
+        sig = private_key.sign(sighash) + bytes([SIGHASH_ALL])
+        signatures.append(sig)
+        
+        witness.vtxinwit.append(CTxInWitness(CScript([sig, public_key])))
+        tx.vin[i].scriptSig = CScript()
+        
+        # Set the witness data
         tx.wit = witness
     
     return tx

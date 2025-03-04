@@ -5,6 +5,7 @@ from wallet.commands import create_command
 from wallet.exceptions import WalletError
 from wallet import generate_wallet
 from wallet.interactive import InteractiveWallet
+from wallet.wallet_manager import wallet_manager
 
 def save_to_json(filename: str, privkey: str, pubkey: str,
                 mnemonic: str, addresses: list, network: str):
@@ -46,47 +47,87 @@ def main():
         # Parse command line arguments
         args = parse_args()
         
-        # Check if interactive mode is requested
+        # Handle interactive mode first
         if args.interactive:
             interactive_wallet = InteractiveWallet(args.network)
             interactive_wallet.run()
             return
-            
-        # Rest of your existing main function...
-        addresses = None
-        result = None
         
-        # We need wallet generation for these operations
-        needs_wallet = (
-            args.receive or 
-            args.send or 
-            args.output or
-            not (args.check_fees or args.blockchain_info or args.mempool_info or args.load)
-        )
-        
-        if needs_wallet:
+        # Handle wallet creation when specifically requested
+        if args.privkey:
+            # User wants to import a wallet with a private key
             try:
-                # Use 'both' address type when checking balance
-                address_type = 'both' if args.check_balance else args.address_type
-                result = generate_wallet(args.privkey, args.network, address_type)
-                
+                result = generate_wallet(args.privkey, args.network)
                 if None in result[:3]:
-                    error_message = result[3]
-                    print(error_message)
+                    print(f"Error: {result[3]}")
                     return
                 
                 privkey, pubkey, mnemonic, addresses = result
                 
-                # Save to file if output specified
-                if args.output and result:
-                    save_to_json(args.output, privkey, pubkey, mnemonic, addresses, args.network)
+                # Load wallet into manager
+                wallet_manager.load_wallet(
+                    privkey=privkey,
+                    network=args.network,
+                    addresses=addresses,
+                    pubkey=pubkey,
+                    encrypt=False
+                )
                 
+                print(f"Wallet imported successfully from private key")
+                
+                # Save to file if requested
+                if args.output:
+                    save_to_json(args.output, privkey, pubkey, mnemonic, addresses, args.network)
             except Exception as e:
-                print(f"Failed to generate wallet: {str(e)}")
+                print(f"Failed to import wallet: {str(e)}")
+                return
+        elif args.output and not args.load and not wallet_manager.is_wallet_loaded():
+            # User wants to create a new wallet and save it to file
+            try:
+                result = generate_wallet(None, args.network)
+                privkey, pubkey, mnemonic, addresses = result
+                
+                # Save to file
+                save_to_json(args.output, privkey, pubkey, mnemonic, addresses, args.network)
+                
+                # Load wallet into manager
+                wallet_manager.load_wallet(
+                    privkey=privkey,
+                    network=args.network,
+                    addresses=addresses,
+                    pubkey=pubkey,
+                    encrypt=False
+                )
+                
+                print(f"New wallet created and saved to {args.output}")
+            except Exception as e:
+                print(f"Failed to create wallet: {str(e)}")
                 return
         
-        # Create and execute the appropriate command
-        command = create_command(args, addresses)
+        # If no specific action, just status message
+        if not any([
+            args.check_balance, args.show_qr, args.receive, args.new_address, 
+            args.send, args.check_fees, args.blockchain_info, args.mempool_info,
+            args.load, args.history, args.rates, args.utxos, args.use_wallet,
+            args.use_wallet_file, args.unload_wallet, args.wallet_info, args.address,
+            args.help, args.help_command, args.output
+        ]):
+            if wallet_manager.is_wallet_loaded():
+                args = args._replace(wallet_info=True)
+            else:
+                print("\nNo wallet is currently active and no command specified.")
+                print("Use one of these options to get started:")
+                print("  --output FILE         Create a new wallet and save to file")
+                print("  --privkey KEY         Import wallet from private key")
+                print("  --load FILE           Load wallet from file")
+                print("  --use-wallet KEY      Use wallet from private key")
+                print("  --help                Show comprehensive help")
+                print("  --interactive         Start interactive mode")
+                return
+        
+        # Execute the command - all state is managed by command classes
+        # which will check wallet_manager for active wallet
+        command = create_command(args)
         command.execute()
         
     except WalletError as e:

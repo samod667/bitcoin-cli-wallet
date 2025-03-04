@@ -28,9 +28,9 @@ def create_p2wpkh_address(pubkey: bytes, network: str = "testnet") -> str:
 
 def generate_wallet(privkey: Optional[str] = None, 
                    network: str = "testnet",
-                   address_type: str = "both") -> Tuple[str, str, str, List[Tuple]]:
+                   address_type: str = "segwit") -> Tuple[str, str, str, List[Tuple]]:
     """
-    Generate or import a Bitcoin wallet with unique addresses.
+    Generate or import a Bitcoin wallet with SegWit addresses.
     """
     try:
         # Initialize the network settings
@@ -51,48 +51,39 @@ def generate_wallet(privkey: Optional[str] = None,
             coin_type = "0" if network == "mainnet" else "1"
             derived_addresses = []
             
-            # Determine which address types to generate
-            address_types = []
-            if address_type in ["both", "segwit"]:
-                # BIP-84 path for native SegWit
-                address_types.append(("segwit", f"m/84'/{coin_type}'/0'/0"))
-            if address_type in ["both", "legacy"]:
-                # BIP-44 path for legacy
-                address_types.append(("legacy", f"m/44'/{coin_type}'/0'/0"))
+            # Always use BIP-84 path for native SegWit
+            derivation_path = f"m/84'/{coin_type}'/0'/0"
             
             # Track unique addresses to prevent duplicates
             unique_addresses = set()
             
-            for addr_type, derivation_path in address_types:
-                account_key = master_key.subkey_for_path(derivation_path)
-                
-                for i in range(10):
-                    try:
-                        derived_key = account_key.subkey_for_path(str(i))
-                        secret_bytes = derived_key.secret
-                        if isinstance(secret_bytes, int):
-                            secret_bytes = secret_bytes.to_bytes(32, 'big')
-                        
-                        derived_private_key = CBitcoinSecret.from_secret_bytes(secret_bytes)
-                        derived_public_key = derived_private_key.pub
-                        
-                        if addr_type == "segwit":
-                            derived_address = create_p2wpkh_address(derived_public_key, network)
-                        else:
-                            derived_address = str(P2PKHBitcoinAddress.from_pubkey(derived_public_key))
-                        
-                        # Only add if address is unique
-                        if derived_address not in unique_addresses:
-                            derived_addresses.append((
-                                len(derived_addresses),  # Use sequential index
-                                str(derived_private_key),
-                                derived_public_key.hex(),
-                                derived_address
-                            ))
-                            unique_addresses.add(derived_address)
-                    except Exception as e:
-                        print(f"Error deriving {addr_type} address {i}: {str(e)}")
-                        continue
+            account_key = master_key.subkey_for_path(derivation_path)
+            
+            for i in range(10):
+                try:
+                    derived_key = account_key.subkey_for_path(str(i))
+                    secret_bytes = derived_key.secret
+                    if isinstance(secret_bytes, int):
+                        secret_bytes = secret_bytes.to_bytes(32, 'big')
+                    
+                    derived_private_key = CBitcoinSecret.from_secret_bytes(secret_bytes)
+                    derived_public_key = derived_private_key.pub
+                    
+                    # Only generate SegWit addresses
+                    derived_address = create_p2wpkh_address(derived_public_key, network)
+                    
+                    # Only add if address is unique
+                    if derived_address not in unique_addresses:
+                        derived_addresses.append((
+                            len(derived_addresses),  # Use sequential index
+                            str(derived_private_key),
+                            derived_public_key.hex(),
+                            derived_address
+                        ))
+                        unique_addresses.add(derived_address)
+                except Exception as e:
+                    print(f"Error deriving address {i}: {str(e)}")
+                    continue
             
             if not derived_addresses:
                 raise ValueError("Failed to generate any valid addresses")
@@ -105,35 +96,22 @@ def generate_wallet(privkey: Optional[str] = None,
             base_private_key = CBitcoinSecret(privkey)
             mnemonic_words = "N/A (provided private key)"
             base_pubkey = base_private_key.pub
+            #print("Public key length:", len(base_pubkey))
+
             
             derived_addresses = []
             unique_addresses = set()
             
-            # Determine which address types to generate
-            address_types = []
-            if address_type in ["both", "segwit"]:
-                # Generate SegWit address
-                segwit_address = create_p2wpkh_address(base_pubkey, network)
-                if segwit_address not in unique_addresses:
-                    derived_addresses.append((
-                        0, 
-                        str(base_private_key),
-                        base_pubkey.hex(), 
-                        segwit_address
-                    ))
-                    unique_addresses.add(segwit_address)
-            
-            if address_type in ["both", "legacy"]:
-                # Generate Legacy address
-                legacy_address = str(P2PKHBitcoinAddress.from_pubkey(base_pubkey))
-                if legacy_address not in unique_addresses:
-                    derived_addresses.append((
-                        len(derived_addresses),  # Use sequential index 
-                        str(base_private_key),
-                        base_pubkey.hex(), 
-                        legacy_address
-                    ))
-                    unique_addresses.add(legacy_address)
+            # Generate SegWit address
+            segwit_address = create_p2wpkh_address(base_pubkey, network)
+            if segwit_address not in unique_addresses:
+                derived_addresses.append((
+                    0, 
+                    str(base_private_key),
+                    base_pubkey.hex(), 
+                    segwit_address
+                ))
+                unique_addresses.add(segwit_address)
 
         return (str(base_private_key), base_pubkey.hex(),
                 mnemonic_words, derived_addresses)

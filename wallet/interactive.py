@@ -27,7 +27,7 @@ except ImportError:
 from .commands import (
     GenerateWalletCommand, CheckFeesCommand, BlockchainInfoCommand,
     MempoolInfoCommand, LoadWalletCommand, ReceiveCommand, SendCommand,
-    ExchangeRatesCommand, TransactionHistoryCommand
+    ExchangeRatesCommand, TransactionHistoryCommand, WalletInfoCommand
 )
 from .cli import CommandArguments
 from .display import WalletDisplay
@@ -62,8 +62,9 @@ class InteractiveWallet:
             
             self.completer = WordCompleter([
                 'create', 'balance', 'send', 'receive', 'history',
-                'fees', 'rates', 'blockchain', 'mempool', 'load', 'help',
-                'exit', 'quit', 'clear'
+                'fees', 'rates', 'blockchain', 'mempool', 'load', 
+                'use', 'unload', 'wallet',  # Added new commands
+                'help', 'exit', 'quit', 'clear'
             ])
             
             self.session = PromptSession(
@@ -129,6 +130,12 @@ class InteractiveWallet:
             self._create_wallet(args)
         elif command == 'load':
             self._load_wallet(args)
+        elif command == 'use':
+            self._use_wallet(args)  # New command
+        elif command == 'unload':
+            self._unload_wallet()   # New command
+        elif command == 'wallet':
+            self._show_wallet_info()  # New command
         elif command == 'balance':
             self._check_balance()
         elif command == 'receive':
@@ -147,7 +154,185 @@ class InteractiveWallet:
             self._show_mempool_info()
         else:
             print(f"Unknown command: '{command}'. Type 'help' for available commands.")
+
+    # [Existing methods remain unchanged]
     
+    def _use_wallet(self, args: List[str]) -> None:
+        """Load a wallet for subsequent commands."""
+        if not args:
+            print("Please specify a private key or a wallet file.")
+            print("Usage: use PRIVATE_KEY")
+            print("   or: use --file WALLET_FILE")
+            return
+        
+        # Check if loading from file
+        if args[0] == '--file' and len(args) > 1:
+            wallet_file = args[1]
+            from .wallet_manager import wallet_manager
+            
+            success = wallet_manager.load_wallet_from_file(wallet_file)
+            if success:
+                active_wallet = wallet_manager.get_active_wallet()
+                self.network = active_wallet.get('network', 'testnet')
+                self.address_type = active_wallet.get('address_type', 'segwit')
+                self.privkey = active_wallet.get('private_key')
+                
+                # Regenerate wallet data
+                result = generate_wallet(self.privkey, self.network)
+                if None not in result[:3]:
+                    _, _, _, self.addresses = result
+                    
+                print(f"Wallet loaded from {wallet_file} and will be used for subsequent commands.")
+                self._show_wallet_info()
+        else:
+            # Assume first argument is private key
+            privkey = args[0]
+            
+            # Process optional arguments
+            i = 1
+            network = self.network
+            address_type = self.address_type
+            
+            while i < len(args):
+                if args[i] == '--network' and i + 1 < len(args):
+                    if args[i + 1] in ('mainnet', 'testnet', 'signet'):
+                        network = args[i + 1]
+                    i += 2
+                elif args[i] == '--type' and i + 1 < len(args):
+                    if args[i + 1] in ('segwit', 'legacy', 'both'):
+                        address_type = args[i + 1]
+                    i += 2
+                else:
+                    i += 1
+            
+            # Generate wallet
+            result = generate_wallet(privkey, network)
+            
+            if None in result[:3]:
+                error_message = result[3]
+                print(error_message)
+                return
+                
+            self.privkey, pubkey, mnemonic, self.addresses = result
+            self.network = network
+            self.address_type = address_type
+            
+            # Store in wallet manager
+            from .wallet_manager import wallet_manager
+            
+            success = wallet_manager.load_wallet(
+                privkey=self.privkey,
+                network=self.network,
+                address_type=self.address_type,
+                addresses=self.addresses,
+                pubkey=pubkey
+            )
+            
+            if success:
+                print(f"Wallet loaded successfully and will be used for subsequent commands.")
+                self._show_wallet_info()
+
+    def _unload_wallet(self) -> None:
+        """Unload the currently active wallet."""
+        from .wallet_manager import wallet_manager
+        
+        success = wallet_manager.unload_wallet()
+        
+        if success:
+            # Clear local wallet data as well
+            self.privkey = None
+            self.addresses = None
+            print("Wallet unloaded. No wallet is currently active.")
+        else:
+            print("No wallet was loaded.")
+
+    def _show_wallet_info(self) -> None:
+        """Display information about the current wallet."""
+        from .wallet_manager import wallet_manager
+        
+        # First check if we have a local wallet in the interactive session
+        if self.privkey and self.addresses:
+            print("Using wallet from interactive session:")
+            
+            # Create command arguments
+            args = CommandArguments(
+                network=self.network,
+                output=None,
+                check_balance=True,
+                show_qr=False,
+                address_type=self.address_type,
+                privkey=self.privkey,
+                receive=False,
+                new_address=False,
+                amount=None,
+                message=None,
+                send=None,
+                fee_priority='medium',
+                privacy=False,
+                check_fees=False,
+                blockchain_info=False,
+                mempool_info=False,
+                load=None,
+                history=False,
+                limit=10,
+                rates=False,
+                interactive=True,
+                use_wallet=None,
+                use_wallet_file=None,
+                unload_wallet=False,
+                wallet_info=True,
+                utxos=False
+            )
+            
+            # Execute wallet info command
+            cmd = WalletInfoCommand(args)
+            cmd.execute()
+            return
+            
+        # Check the wallet manager
+        active_wallet = wallet_manager.get_active_wallet()
+        
+        if not active_wallet:
+            print("No wallet is currently active.")
+            print("Use 'use PRIVATE_KEY' or 'load WALLET_FILE' to activate a wallet.")
+            return
+        
+        # Create command arguments
+        args = CommandArguments(
+            network=active_wallet.get('network', 'testnet'),
+            output=None,
+            check_balance=True,
+            show_qr=False,
+            address_type=active_wallet.get('address_type', 'segwit'),
+            privkey=active_wallet.get('private_key'),
+            receive=False,
+            new_address=False,
+            amount=None,
+            message=None,
+            send=None,
+            fee_priority='medium',
+            privacy=False,
+            check_fees=False,
+            blockchain_info=False,
+            mempool_info=False,
+            load=None,
+            history=False,
+            limit=10,
+            rates=False,
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=True,
+            utxos=False
+        )
+        
+        # Execute wallet info command
+        cmd = WalletInfoCommand(args)
+        cmd.execute()
+    
+    # [Original methods remain unchanged]
+
     def _create_wallet(self, args: List[str]) -> None:
         """Create a new wallet or import from private key."""
         privkey = None
@@ -163,8 +348,7 @@ class InteractiveWallet:
                 output_file = args[i + 1]
                 i += 2
             elif args[i] == '--type' and i + 1 < len(args):
-                if args[i + 1] in ('segwit', 'legacy', 'both'):
-                    self.address_type = args[i + 1]
+                # Keep this for backward compatibility but ignore the value
                 i += 2
             elif args[i] == '--network' and i + 1 < len(args):
                 if args[i + 1] in ('mainnet', 'testnet', 'signet'):
@@ -174,8 +358,8 @@ class InteractiveWallet:
                 i += 1
         
         try:
-            # Generate wallet
-            result = generate_wallet(privkey, self.network, self.address_type)
+            # Generate wallet - note we don't pass address_type anymore
+            result = generate_wallet(privkey, self.network)
             
             if None in result[:3]:
                 error_message = result[3]
@@ -207,7 +391,12 @@ class InteractiveWallet:
                 history=False,
                 limit=10,
                 rates=False,
-                interactive=True
+                interactive=True,
+                use_wallet=None,
+                use_wallet_file=None,
+                unload_wallet=False,
+                wallet_info=False,
+                utxos=False
             )
             
             # Execute display command
@@ -247,7 +436,7 @@ class InteractiveWallet:
                 return
             
             # Regenerate wallet using the private key
-            result = generate_wallet(self.privkey, self.network, self.address_type)
+            result = generate_wallet(self.privkey, self.network)
             
             # Store wallet information
             self.privkey, pubkey, mnemonic, self.addresses = result
@@ -275,7 +464,12 @@ class InteractiveWallet:
                 history=False,
                 limit=10,
                 rates=False,
-                interactive=True
+                interactive=True,
+                use_wallet=None,
+                use_wallet_file=None,
+                unload_wallet=False,
+                wallet_info=False,
+                utxos=False
             )
             
             # Execute display command
@@ -317,7 +511,12 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
@@ -375,18 +574,66 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = ReceiveCommand(args, self.addresses)
         cmd.execute()
     
+    def _print_welcome(self) -> None:
+        """Print welcome message and basic help."""
+        from .display import WalletDisplay
+        
+        # Display enhanced title
+        WalletDisplay.display_title(
+            "Bitcoin Wallet CLI", 
+            "Interactive Mode", 
+            network=self.network
+        )
+        
+        if HAS_RICH:
+            console.print("Type [bold green]help[/bold green] to see available commands.")
+            console.print("Type [bold green]exit[/bold green] to quit.\n")
+        else:
+            print("Type 'help' to see available commands.")
+            print("Type 'exit' to quit.\n")
+
     def _send_payment(self, args: List[str]) -> None:
         """Send a payment."""
+        from .wallet_manager import wallet_manager
+        import bitcoin
+        from bitcoin.core import CMutableTransaction, CMutableTxIn, CMutableTxOut, COutPoint, CTxWitness, CTxInWitness
+        from bitcoin.core.script import CScript, SignatureHash, SIGHASH_ALL, OP_0, SIGVERSION_WITNESS_V0
+        from bitcoin.wallet import CBitcoinSecret
+        from bitcoin.core import Hash160
+        from .network import fetch_utxos, get_recommended_fee_rate
+        import requests
+        
+        # Check local wallet first, then wallet manager
         if not self.addresses:
-            print("No wallet loaded. Use 'create' or 'load' first.")
-            return
+            active_wallet = wallet_manager.get_active_wallet()
+            if active_wallet:
+                # Use wallet from manager
+                self.privkey = active_wallet.get('private_key')
+                self.network = active_wallet.get('network', 'testnet')
+                self.address_type = active_wallet.get('address_type', 'segwit')
+                
+                # Generate addresses
+                result = generate_wallet(self.privkey, self.network)
+                if None not in result[:3]:
+                    _, _, _, self.addresses = result
+                else:
+                    print("Failed to load wallet from manager.")
+                    return
+            else:
+                print("No wallet loaded. Use 'create', 'load', or 'use' first.")
+                return
         
         to_address = None
         amount = None
@@ -423,41 +670,92 @@ class InteractiveWallet:
         if amount is None:
             print("Please specify an amount with --amount.")
             return
-        
-        # Create command arguments
-        args = CommandArguments(
-            network=self.network,
-            output=None,
-            check_balance=False,
-            show_qr=False,
-            address_type=self.address_type,
-            privkey=self.privkey,
-            receive=False,
-            new_address=False,
-            amount=amount,
-            message=None,
-            send=to_address,
-            fee_priority=fee_priority,
-            privacy=privacy,
-            check_fees=False,
-            blockchain_info=False,
-            mempool_info=False,
-            load=None,
-            history=False,
-            limit=10,
-            rates=False,
-            interactive=True
-        )
-        
-        # Execute command
-        cmd = SendCommand(args, self.addresses)
-        cmd.execute()
-    
+
+        try:
+            # Show fee rates
+            fee_rates = get_recommended_fee_rate(self.network)
+            print("\nCurrent Fee Rates (satoshis/vB):")
+            print(f"High Priority: {fee_rates['high']} sat/vB")
+            print(f"Medium Priority: {fee_rates['medium']} sat/vB")
+            print(f"Low Priority: {fee_rates['low']} sat/vB")
+            print(f"\nUsing {fee_priority} priority: {fee_rates[fee_priority]} sat/vB")
+            
+            # Set network
+            if self.network == "mainnet":
+                bitcoin.SelectParams("mainnet")
+            else:
+                bitcoin.SelectParams("testnet")
+            
+            # Get sender address
+            from_address = self.addresses[0][3]
+            
+            print(f"\nPreparing to send {amount} BTC")
+            print(f"From: {from_address}")
+            print(f"To: {to_address}")
+            
+            # For testing/debugging, create a transaction command to use CLI instead
+            args = CommandArguments(
+                network=self.network,
+                output=None,
+                check_balance=False,
+                show_qr=False,
+                address_type=self.address_type,
+                privkey=self.privkey,
+                receive=False,
+                new_address=False,
+                amount=amount,
+                message=None,
+                send=to_address,
+                fee_priority=fee_priority,
+                privacy=privacy,
+                check_fees=False,
+                blockchain_info=False,
+                mempool_info=False,
+                load=None,
+                history=False,
+                limit=10,
+                rates=False,
+                interactive=True,
+                use_wallet=None,
+                use_wallet_file=None,
+                unload_wallet=False,
+                wallet_info=False,
+                utxos=False,
+                address=None,
+                help=False,
+                help_command=None
+            )
+            
+            # Execute using the existing command implementation
+            cmd = SendCommand(args, self.addresses)
+            cmd.execute()
+            
+        except Exception as e:
+            print(f"Failed to send transaction: {str(e)}")
+
     def _show_history(self, args: List[str]) -> None:
         """Show transaction history."""
+        from .wallet_manager import wallet_manager
+        
+        # Check local wallet first, then wallet manager
         if not self.addresses:
-            print("No wallet loaded. Use 'create' or 'load' first.")
-            return
+            active_wallet = wallet_manager.get_active_wallet()
+            if active_wallet:
+                # Use wallet from manager
+                self.privkey = active_wallet.get('private_key')
+                self.network = active_wallet.get('network', 'testnet')
+                self.address_type = active_wallet.get('address_type', 'segwit')
+                
+                # Generate addresses
+                result = generate_wallet(self.privkey, self.network)
+                if None not in result[:3]:
+                    _, _, _, self.addresses = result
+                else:
+                    print("Failed to load wallet from manager.")
+                    return
+            else:
+                print("No wallet loaded. Use 'create', 'load', or 'use' first.")
+                return
         
         limit = 10
         
@@ -487,23 +785,36 @@ class InteractiveWallet:
             history=True,
             limit=limit,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = TransactionHistoryCommand(args, self.addresses)
         cmd.execute()
-    
+
     def _check_fees(self) -> None:
         """Check current recommended fees."""
+        # For fee checking, we don't need an active wallet, but we use network from active wallet if available
+        from .wallet_manager import wallet_manager
+        
+        network = self.network
+        active_wallet = wallet_manager.get_active_wallet()
+        if active_wallet:
+            network = active_wallet.get('network', network)
+        
         # Create command arguments
         args = CommandArguments(
-            network=self.network,
+            network=network,
             output=None,
             check_balance=False,
             show_qr=False,
             address_type=self.address_type,
-            privkey=self.privkey,
+            privkey=self.privkey if hasattr(self, 'privkey') else None,
             receive=False,
             new_address=False,
             amount=None,
@@ -518,23 +829,40 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = CheckFeesCommand(args)
         cmd.execute()
-    
+
     def _show_rates(self) -> None:
         """Show current exchange rates."""
+        # Network doesn't matter for exchange rates, but we'll use the active wallet's network for consistency
+        from .wallet_manager import wallet_manager
+        from .display import WalletDisplay
+        
+        network = self.network
+        active_wallet = wallet_manager.get_active_wallet()
+        if active_wallet:
+            network = active_wallet.get('network', network)
+        
+        # Display title
+        WalletDisplay.display_title("Bitcoin Wallet CLI", command_name="Exchange Rates", network=network)
+        
         # Create command arguments
         args = CommandArguments(
-            network=self.network,
+            network=network,
             output=None,
             check_balance=False,
             show_qr=False,
             address_type=self.address_type,
-            privkey=self.privkey,
+            privkey=self.privkey if hasattr(self, 'privkey') else None,
             receive=False,
             new_address=False,
             amount=None,
@@ -549,23 +877,40 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=True,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = ExchangeRatesCommand(args)
         cmd.execute()
-    
+
     def _show_blockchain_info(self) -> None:
         """Show current blockchain information."""
+        # For blockchain info, use network from active wallet if available
+        from .wallet_manager import wallet_manager
+        from .display import WalletDisplay
+        
+        network = self.network
+        active_wallet = wallet_manager.get_active_wallet()
+        if active_wallet:
+            network = active_wallet.get('network', network)
+        
+        # Display title
+        WalletDisplay.display_title("Bitcoin Wallet CLI", command_name="Blockchain Info", network=network)
+        
         # Create command arguments
         args = CommandArguments(
-            network=self.network,
+            network=network,
             output=None,
             check_balance=False,
             show_qr=False,
             address_type=self.address_type,
-            privkey=self.privkey,
+            privkey=self.privkey if hasattr(self, 'privkey') else None,
             receive=False,
             new_address=False,
             amount=None,
@@ -580,23 +925,40 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = BlockchainInfoCommand(args)
         cmd.execute()
-    
+
     def _show_mempool_info(self) -> None:
         """Show current mempool information."""
+        # For mempool info, use network from active wallet if available
+        from .wallet_manager import wallet_manager
+        from .display import WalletDisplay
+        
+        network = self.network
+        active_wallet = wallet_manager.get_active_wallet()
+        if active_wallet:
+            network = active_wallet.get('network', network)
+        
+        # Display title
+        WalletDisplay.display_title("Bitcoin Wallet CLI", command_name="Mempool Info", network=network)
+        
         # Create command arguments
         args = CommandArguments(
-            network=self.network,
+            network=network,
             output=None,
             check_balance=False,
             show_qr=False,
             address_type=self.address_type,
-            privkey=self.privkey,
+            privkey=self.privkey if hasattr(self, 'privkey') else None,
             receive=False,
             new_address=False,
             amount=None,
@@ -611,13 +973,18 @@ class InteractiveWallet:
             history=False,
             limit=10,
             rates=False,
-            interactive=True
+            interactive=True,
+            use_wallet=None,
+            use_wallet_file=None,
+            unload_wallet=False,
+            wallet_info=False,
+            utxos=False
         )
         
         # Execute command
         cmd = MempoolInfoCommand(args)
         cmd.execute()
-    
+
     def _show_help(self, command: Optional[str] = None) -> None:
         """
         Show help information for commands.
@@ -640,6 +1007,9 @@ class InteractiveWallet:
                 commands = [
                     ("create", "Create a new wallet or import from private key", "create [--privkey KEY] [--output FILE] [--type TYPE] [--network NETWORK]"),
                     ("load", "Load wallet from file", "load WALLET_FILE"),
+                    ("use", "Load/use wallet for subsequent commands", "use PRIVATE_KEY or use --file WALLET_FILE"),
+                    ("wallet", "Show information about active wallet", "wallet"),
+                    ("unload", "Unload the currently active wallet", "unload"),
                     ("balance", "Check wallet balance", "balance"),
                     ("receive", "Generate payment request", "receive [--amount AMOUNT] [--message MESSAGE] [--new]"),
                     ("send", "Send payment", "send --to ADDRESS --amount AMOUNT [--fee PRIORITY] [--privacy]"),
@@ -666,6 +1036,9 @@ class InteractiveWallet:
                 print("=" * 80)
                 print("create    - Create a new wallet or import from private key")
                 print("load      - Load wallet from file")
+                print("use       - Load/use wallet for subsequent commands")
+                print("wallet    - Show information about active wallet")
+                print("unload    - Unload the currently active wallet")
                 print("balance   - Check wallet balance")
                 print("receive   - Generate payment request")
                 print("send      - Send payment")
@@ -679,7 +1052,7 @@ class InteractiveWallet:
                 print("exit      - Exit the wallet")
                 print("=" * 80)
                 print("\nFor detailed help on a specific command, type 'help COMMAND'")
-    
+
     def _show_command_help_rich(self, command: str) -> None:
         """
         Show detailed help for a specific command with rich formatting.
@@ -714,6 +1087,29 @@ class InteractiveWallet:
             ]
             examples = [
                 "load my_wallet.json"
+            ]
+        elif command == "use":
+            help_text = "Load/use a wallet for subsequent commands without having to specify the private key each time."
+            options = [
+                ("PRIVATE_KEY", "Private key in WIF format to use"),
+                ("--file WALLET_FILE", "Load wallet from a JSON file"),
+                ("--type TYPE", "Type of address to generate (segwit, legacy, both)"),
+                ("--network NETWORK", "Bitcoin network to use (mainnet, testnet, signet)")
+            ]
+            examples = [
+                "use cPCAMF3uPQJQfMvsqfzXTcH7Gm9buiYQZb3gaxjD5PZkCyFF3ADL",
+                "use --file my_wallet.json",
+                "use cPCAMF3uPQJQfMvsqfzXTcH7Gm9buiYQZb3gaxjD5PZkCyFF3ADL --network testnet --type segwit"
+            ]
+        elif command == "wallet":
+            help_text = "Show information about the currently active wallet."
+            examples = [
+                "wallet"
+            ]
+        elif command == "unload":
+            help_text = "Unload the currently active wallet for security."
+            examples = [
+                "unload"
             ]
         elif command == "balance":
             help_text = "Check the balance of wallet addresses."
@@ -798,7 +1194,7 @@ class InteractiveWallet:
                 examples_table.add_row(example)
             
             console.print(examples_table)
-    
+
     def _show_command_help_basic(self, command: str) -> None:
         """
         Show detailed help for a specific command with basic formatting.
@@ -823,7 +1219,20 @@ class InteractiveWallet:
                 "create --type legacy",
                 "create --privkey cPCAMF3uPQJQfMvsqfzXTcH7Gm9buiYQZb3gaxjD5PZkCyFF3ADL --output my_wallet.json"
             ]
-        # Add other commands similarly...
+        elif command == "use":
+            help_text = "Load/use a wallet for subsequent commands without having to specify the private key each time."
+            options = [
+                ("PRIVATE_KEY", "Private key in WIF format to use"),
+                ("--file WALLET_FILE", "Load wallet from a JSON file"),
+                ("--type TYPE", "Type of address to generate (segwit, legacy, both)"),
+                ("--network NETWORK", "Bitcoin network to use (mainnet, testnet, signet)")
+            ]
+            examples = [
+                "use cPCAMF3uPQJQfMvsqfzXTcH7Gm9buiYQZb3gaxjD5PZkCyFF3ADL",
+                "use --file my_wallet.json",
+                "use cPCAMF3uPQJQfMvsqfzXTcH7Gm9buiYQZb3gaxjD5PZkCyFF3ADL --network testnet --type segwit"
+            ]
+        # Add other commands as in the rich version...
         else:
             print(f"Unknown command: '{command}'")
             return
@@ -847,25 +1256,3 @@ class InteractiveWallet:
             for example in examples:
                 print(f"wallet> {example}")
             print()
-    
-    def _print_welcome(self) -> None:
-        """Print welcome message and basic help."""
-        if HAS_RICH:
-            from rich.panel import Panel
-            
-            console.print(Panel.fit(
-                "[bold blue]Bitcoin Wallet Interactive Mode[/bold blue]\n\n"
-                "Type [bold green]help[/bold green] to see available commands.\n"
-                "Type [bold green]exit[/bold green] to quit.",
-                border_style="blue"
-            ))
-        else:
-            print("\n=== Bitcoin Wallet Interactive Mode ===\n")
-            print("Type 'help' to see available commands.")
-            print("Type 'exit' to quit.\n")
-        
-        # Show current network
-        if HAS_RICH:
-            console.print(f"Current network: [bold cyan]{self.network.upper()}[/bold cyan]")
-        else:
-            print(f"Current network: {self.network.upper()}")

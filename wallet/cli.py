@@ -5,27 +5,34 @@ from abc import ABC, abstractmethod
 class CommandArguments(NamedTuple):
     """Structured container for parsed command line arguments."""
     network: str
-    output: Optional[str]
+    output: Optional[str] 
     check_balance: bool
     show_qr: bool
-    address_type: str
-    privkey: Optional[str]
-    receive: bool
-    new_address: bool
-    amount: Optional[float]
-    message: Optional[str]
-    send: Optional[str]
-    fee_priority: str
-    privacy: bool
-    check_fees: bool
-    blockchain_info: bool
-    mempool_info: bool
-    load: Optional[str]
-    history: bool
-    limit: int
-    rates: bool
-    interactive: bool
-    utxos: bool
+    address_type: str = "segwit"
+    privkey: Optional[str] = None
+    receive: bool = False
+    new_address: bool = False
+    amount: Optional[float] = None
+    message: Optional[str] = None
+    send: Optional[str] = None
+    fee_priority: str = "medium"
+    privacy: bool = False
+    check_fees: bool = False
+    blockchain_info: bool = False
+    mempool_info: bool = False
+    load: Optional[str] = None
+    history: bool = False
+    limit: int = 10
+    rates: bool = False
+    interactive: bool = False
+    utxos: bool = False
+    use_wallet: Optional[str] = None
+    use_wallet_file: Optional[str] = None
+    unload_wallet: bool = False
+    wallet_info: bool = False
+    address: Optional[str] = None
+    help: bool = False
+    help_command: Optional[str] = None
 
 class Command(ABC):
     """Base class for all CLI commands."""
@@ -37,7 +44,7 @@ class Command(ABC):
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """Set up and configure command-line argument parser."""
-    parser = argparse.ArgumentParser(description="Bitcoin Wallet CLI")
+    parser = argparse.ArgumentParser(description="Bitcoin Wallet CLI", add_help=False)
     
     # Basic wallet operations
     parser.add_argument(
@@ -63,9 +70,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--address-type",
-        choices=["legacy", "segwit", "both"],
-        default="segwit",  # Changed default from "both" to "segwit"
-        help="Type of address to generate (default: segwit)"
+        action="store_const",
+        const="segwit",
+        default="segwit",
     )
     parser.add_argument(  # Changed from positional to optional
         "--privkey",      # Changed from privKey to privkey
@@ -158,7 +165,45 @@ def create_argument_parser() -> argparse.ArgumentParser:
     action="store_true",
     help="Show unspent transaction outputs (UTXOs)"
 )
-    
+    parser.add_argument(
+    "--use-wallet",
+    type=str,
+    help="Load a wallet for subsequent commands using private key"
+)
+
+    parser.add_argument(
+        "--use-wallet-file",
+        type=str,
+        help="Load a wallet for subsequent commands from a wallet file"
+)
+
+    parser.add_argument(
+        "--unload-wallet",
+        action="store_true",
+        help="Unload the currently active wallet"
+)
+
+    parser.add_argument(
+        "--wallet-info",
+        action="store_true",
+        help="Display information about the currently active wallet"
+)
+    parser.add_argument(
+        "--address",
+        type=str,
+        help="Check balance of any Bitcoin address (without loading a wallet)"
+)
+    help_group = parser.add_argument_group('help')
+    help_group.add_argument(
+        "--help",
+        action="store_true",
+        help="Show detailed help information"
+    )
+    help_group.add_argument(
+        "--help-command",
+        metavar="COMMAND",
+        help="Show detailed help for a specific command"
+    )
     return parser
 
 def parse_args() -> CommandArguments:
@@ -188,5 +233,12 @@ def parse_args() -> CommandArguments:
         limit=args.limit,
         rates=args.rates,
         interactive=args.interactive,
-        utxos=args.utxos
+        utxos=args.utxos,
+        use_wallet=args.use_wallet,
+        use_wallet_file=args.use_wallet_file,
+        unload_wallet=args.unload_wallet,
+        wallet_info=args.wallet_info,
+        address=args.address,
+        help=args.help,
+        help_command=args.help_command
     )
